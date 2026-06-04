@@ -1,0 +1,73 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "Mingdao",
+    "scopeName": "source.mingdao",
+    "patterns": [
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#strings"
+        },
+        {
+            "include": "#numbers"
+        },
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#operators"
+        },
+        {
+            "include": "#types"
+        },
+        {
+            "include": "#functions"
+        }
+    ],
+    "repository": {
+        "keywords": {
+            "patterns": [{
+                "match": "\\b(定义|赋值|如果|那么|否则|对于|返回|跳出|继续|导入|导出|类|接口|方法|属性|定义类型|常量|异步|等待)\\b",
+                "name": "keyword.control.mingdao"
+            }]
+        },
+        "strings": {
+            "patterns": [{
+                "begin": "\"",
+                "end": "\"",
+                "name": "string.quoted.double.mingdao"
+            }]
+        },
+        "numbers": {
+            "patterns": [{
+                "match": "\\b[0-9]+\\.?[0-9]*\\b",
+                "name": "constant.numeric.mingdao"
+            }]
+        },
+        "comments": {
+            "patterns": [{
+                "match": "#.*$",
+                "name": "comment.line.mingdao"
+            }]
+        },
+        "operators": {
+            "patterns": [{
+                "match": "(加|减|乘|除|模|等于|大于|小于|大于等于|小于等于|不等于|与|或|非)",
+                "name": "keyword.operator.mingdao"
+            }]
+        },
+        "types": {
+            "patterns": [{
+                "match": "\\b(整数|浮点数|字符串|布尔|空值|任意|列表|字典)\\b",
+                "name": "support.type.mingdao"
+            }]
+        },
+        "functions": {
+            "patterns": [{
+                "match": "\\b(打印|长度|索引|列表|列表修改|消息拼接|生成|捕获|新建|转整数|转浮点数|转字符串)\\b",
+                "name": "support.function.mingdao"
+            }]
+        }
+    }
+}

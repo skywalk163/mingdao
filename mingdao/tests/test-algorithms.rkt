@@ -18,7 +18,7 @@
   (displayln "执行结果:")
   (define ns (make-base-namespace))
   (define core-path
-    (path->string (build-path (current-directory) ".." "core.rkt")))
+    (path->string (build-path (current-directory) "mingdao" "core.rkt")))
   (eval `(require (file ,core-path)) ns)
   (with-handlers ([exn:fail? (lambda (e) (displayln (format "错误: ~a" (exn-message e))))])
     (for ([stmt ast])

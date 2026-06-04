@@ -1,0 +1,96 @@
+{
+  "name": "mingdao-language-support",
+  "displayName": "明道语言支持",
+  "description": "为明道语言提供语法高亮、代码补全、错误诊断等功能",
+  "version": "0.1.0",
+  "publisher": "mingdao",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters"
+  ],
+  "activationEvents": [
+    "onLanguage:mingdao"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "mingdao",
+        "aliases": ["Mingdao", "明道"],
+        "extensions": [".mingdao", ".mdao"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "mingdao",
+        "scopeName": "source.mingdao",
+        "path": "./syntaxes/mingdao.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "mingdao.formatDocument",
+        "title": "格式化明道代码"
+      },
+      {
+        "command": "mingdao.startDebugger",
+        "title": "启动调试器"
+      },
+      {
+        "command": "mingdao.installPackage",
+        "title": "安装包"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "mingdao.formatDocument",
+          "group": "navigation",
+          "when": "editorLangId == mingdao"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "明道语言配置",
+      "properties": {
+        "mingdao.lsp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用LSP服务器"
+        },
+        "mingdao.format.indentSize": {
+          "type": "number",
+          "default": 4,
+          "description": "缩进大小"
+        },
+        "mingdao.format.useTabs": {
+          "type": "boolean",
+          "default": false,
+          "description": "使用Tab缩进"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^16.x",
+    "@types/vscode": "^1.60.0",
+    "typescript": "^4.4.3",
+    "eslint": "^7.32.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mingdao-lang/mingdao-vscode"
+  }
+}

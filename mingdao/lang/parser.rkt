@@ -26,6 +26,21 @@
   (define pos 0)
   (define (get-pos) pos)
   
+  ;; 类型别名表：存储类型别名 -> 实际类型的映射
+  (define *类型别名表* (make-hash))
+  
+  ;; 类型展开函数：递归展开类型别名
+  (define (展开类型 type-expr)
+    (if (symbol? type-expr)
+        (let ([展开的 (hash-ref *类型别名表* type-expr #f)])
+          (if 展开的
+              (展开类型 展开的)
+              type-expr))
+        (if (pair? type-expr)
+            (cons (展开类型 (car type-expr)) 
+                  (map 展开类型 (cdr type-expr)))
+            type-expr)))
+  
   ;; 注册的函数名集合
   (define function-names (make-hash))
   ;; 注册内置函数
@@ -559,6 +574,21 @@
     (define tok (current))
     (cond
       [(not tok) '()]
+      [(and (match? 'KEYWORD "定义")
+            (let ([next-tok (peek 1)])
+              (and next-tok (eq? (token-type next-tok) 'KEYWORD)
+                   (equal? (token-value next-tok) "类型"))))
+       (begin
+         (advance)
+         (advance)
+         (define alias-name (string->symbol (token-value (current))))
+         (advance)
+         (expect 'KEYWORD "就是")
+         (define actual-type (parse-type))
+         (when (hash-has-key? *类型别名表* alias-name)
+           (error 'parse (format "类型别名 '~a' 重复定义（第 ~a 行）" alias-name (token-line (current)))))
+         (hash-set! *类型别名表* alias-name actual-type)
+         (void))]
       [(match? 'AT)
        (advance)
        (define decorator-name (string->symbol (token-value (expect-identifier))))
