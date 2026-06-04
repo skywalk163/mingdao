@@ -1,11 +1,6 @@
 #lang racket/base
 ;; 明道语言 Playground — 网页交互式编程环境
 
-;; 在无头环境中设置环境变量，避免GUI初始化问题
-(environment-variables-set! (current-environment-variables)
-                           #"PLT_DISPLAY_BACKEND"
-                           #"none")
-
 (require "lang/tokenizer.rkt"
          "lang/parser.rkt"
          web-server/servlet
@@ -16,13 +11,16 @@
          racket/port
          racket/file)
 
-;; 创建持久化命名空间 - 避免导入必要的模块，避免GUI依赖
+;; 创建持久化命名空间
 (define ns
   (let ([ns (make-base-namespace)])
     (parameterize ([current-namespace ns])
-      ;; 只导入我们需要的基础模块
-      ;; 避免导入完整的main.rkt，因为它可能会引入GUI依赖
-      (eval `(require "core/base.rkt" "runtime.rkt" racket/control))
+      (define main-path
+        (let ([cwd (current-directory)])
+          (define try1 (build-path cwd "main.rkt"))
+          (define try2 (build-path cwd "mingdao" "main.rkt"))
+          (path->string (if (file-exists? try1) try1 try2))))
+      (eval `(require (file ,main-path) racket/control))
       (void))
     ns))
 
