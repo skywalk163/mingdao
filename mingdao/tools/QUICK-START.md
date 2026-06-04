@@ -167,6 +167,80 @@ racket mingdao/tools/test-tools.rkt
 - 检查TypeScript编译是否成功
 - 查看VS Code开发者工具中的错误
 
+**Q: 版本不匹配错误**
+```
+loading code: version mismatch
+  expected: "8.18"
+  found: "9.2"
+```
+
+**解决方法：**
+
+| 方法 | 命令 | 适用场景 |
+|------|------|----------|
+| **方法1（推荐）** | 删除 `compiled` 目录后重新编译 | 快速解决单个文件问题 |
+| **方法2** | `raco make <文件名>` | 重新编译特定文件 |
+| **方法3** | `raco setup` | 重新编译所有Racket包 |
+| **方法4** | `racket -y` | 自动重新编译已加载的文件 |
+
+**具体操作（推荐）：**
+
+```powershell
+# Windows PowerShell
+Remove-Item -Recurse -Force mingdao\compiled
+cd mingdao
+raco make playground.rkt
+racket playground.rkt
+```
+
+```bash
+# Linux/macOS
+rm -rf mingdao/compiled
+cd mingdao
+raco make playground.rkt
+racket playground.rkt
+```
+
+**Q: 在无头服务器上运行报错**
+```
+Gtk initialization failed for display ":0"
+```
+
+**解决方法：**
+
+**方法1：使用专门的启动脚本（推荐）**
+
+```bash
+# Linux/macOS
+cd mingdao
+chmod +x playground-headless.sh
+./playground-headless.sh
+```
+
+```cmd
+REM Windows
+cd mingdao
+playground-headless.bat
+```
+
+**方法2：手动设置环境变量**
+
+```bash
+# Linux/macOS
+export PLT_DISPLAY_BACKEND=none
+export DISPLAY=
+cd mingdao
+racket playground.rkt
+```
+
+```powershell
+# Windows PowerShell
+$env:PLT_DISPLAY_BACKEND = "none"
+$env:DISPLAY = ""
+cd mingdao
+racket playground.rkt
+```
+
 ## 📖 更多资源
 
 - **完整文档**: `mingdao/tools/README.md`

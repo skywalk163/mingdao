@@ -208,6 +208,87 @@ racket mingdao/tools/test-tools.rkt
 - [完成总结](../docs/生态工具完成总结.md) - 开发总结
 - [API文档](./) - 各工具源代码注释
 
+## ❓ 常见问题解答
+
+### 版本不匹配错误
+
+**问题描述：**
+```
+loading code: version mismatch
+  expected: "8.18"
+  found: "9.2"
+  in: G:\...\mingdao\compiled\playground_rkt.zo
+```
+
+**解决方法：**
+
+| 方法 | 命令 | 适用场景 |
+|------|------|----------|
+| **方法1（推荐）** | 删除 `compiled` 目录后重新编译 | 快速解决单个文件问题 |
+| **方法2** | `raco make <文件名>` | 重新编译特定文件 |
+| **方法3** | `raco setup` | 重新编译所有Racket包 |
+| **方法4** | `racket -y` | 自动重新编译已加载的文件 |
+
+**具体操作（推荐）：**
+
+```powershell
+# Windows PowerShell
+Remove-Item -Recurse -Force mingdao\compiled
+cd mingdao
+raco make playground.rkt
+racket playground.rkt
+```
+
+```bash
+# Linux/macOS
+rm -rf mingdao/compiled
+cd mingdao
+raco make playground.rkt
+racket playground.rkt
+```
+
+### 无头服务器运行错误
+
+**问题描述：**
+```
+Gtk initialization failed for display ":0"
+```
+
+**解决方法：**
+
+**方法1：使用专门的启动脚本（推荐）**
+
+```bash
+# Linux/macOS
+cd mingdao
+chmod +x playground-headless.sh
+./playground-headless.sh
+```
+
+```cmd
+REM Windows
+cd mingdao
+playground-headless.bat
+```
+
+**方法2：手动设置环境变量**
+
+```bash
+# Linux/macOS
+export PLT_DISPLAY_BACKEND=none
+export DISPLAY=
+cd mingdao
+racket playground.rkt
+```
+
+```powershell
+# Windows PowerShell
+$env:PLT_DISPLAY_BACKEND = "none"
+$env:DISPLAY = ""
+cd mingdao
+racket playground.rkt
+```
+
 ## 🤝 贡献指南
 
 欢迎贡献代码、报告问题或提出建议！
