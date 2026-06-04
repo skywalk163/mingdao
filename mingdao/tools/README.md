@@ -256,7 +256,7 @@ Gtk initialization failed for display ":0"
 
 **解决方法：**
 
-**方法1：使用专门的启动脚本（推荐）**
+**方法1：使用轻量级版本（推荐）**
 
 ```bash
 # Linux/macOS
@@ -271,7 +271,14 @@ cd mingdao
 playground-headless.bat
 ```
 
-**方法2：手动设置环境变量**
+**方法2：直接运行轻量级版本**
+
+```bash
+cd mingdao
+racket playground-light.rkt
+```
+
+**方法3：手动设置环境变量（不推荐，可能无效）**
 
 ```bash
 # Linux/macOS
@@ -288,6 +295,15 @@ $env:DISPLAY = ""
 cd mingdao
 racket playground.rkt
 ```
+
+**说明：**
+
+| 文件 | 说明 |
+|------|------|
+| `playground.rkt` | 完整版本，使用web-server库，可能有GUI依赖 |
+| `playground-light.rkt` | 轻量级版本，纯socket实现，无GUI依赖，适合无头服务器 |
+| `playground-headless.sh` | Linux/macOS无头环境启动脚本（使用轻量级版本） |
+| `playground-headless.bat` | Windows无头环境启动脚本（使用轻量级版本） |
 
 ## 🤝 贡献指南
 
