@@ -1,0 +1,12 @@
+导入 "constants.mingdao"
+导入 "helper.mingdao"
+导入 "state.mingdao"
+导入 "drawing.mingdao"
+导入 "logic.mingdao"
+导入 "collision.mingdao"
+
+重置游戏, 空值
+
+创建窗口, 屏幕宽, 屏幕高, "飞机射击"
+
+游戏循环, 更新, 绘制, 60

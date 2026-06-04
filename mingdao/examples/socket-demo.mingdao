@@ -1,0 +1,18 @@
+;; Socket 模块示例
+;; 展示 TCP 和 UDP 套接字功能
+
+(导入 "std/socket.rkt")
+
+(displayln "=== Socket 模块示例 ===\n")
+
+;; 1. 获取主机名
+(define hostname (套接字/获取主机名))
+(displayln (字符串/格式 "本机主机名: ~a" hostname))
+
+(displayln "\n示例已加载。建议使用 Racket 运行 TCP/UDP 演示，")
+(displayln "因为在脚本环境中同时启动服务器和客户端可能会阻塞。")
+(displayln "\n使用方法:")
+(displayln "  (套接字/创建 (套接字/TCP)) - 创建 TCP 套接字")
+(displayln "  (套接字/绑定 sock \"127.0.0.1\" 8080) - 绑定地址")
+(displayln "  (套接字/监听 sock) - 开始监听")
+(displayln "  (套接字/UDP绑定 udp-sock \"0.0.0.0\" 9090) - 绑定 UDP 套接字")

@@ -1,0 +1,4 @@
+#lang reader "../lang/reader.rkt"
+
+定义 x 就是 5
+x, 打印

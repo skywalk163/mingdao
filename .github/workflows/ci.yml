@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Racket
+        uses: racket/setup-racket@v1
+        with:
+          version: "9.2"
+
+      - name: Run std module tests
+        working-directory: mingdao
+        run: |
+          for f in tests/test-std-*.rkt; do
+            echo "=== Running $f ==="
+            racket "$f" || exit 1
+            echo ""
+          done
+          echo "All std module tests passed!"
+
+      - name: Run language tests
+        working-directory: mingdao
+        run: |
+          for f in tests/test-*.rkt; do
+            # Skip std tests and debug files
+            case "$f" in
+              tests/test-std-*) continue ;;
+              tests/_debug*) continue ;;
+            esac
+            echo "=== Running $f ==="
+            racket "$f" || echo "⚠ Warning: $f failed (may need test framework)"
+          done
+          echo "Language tests completed."

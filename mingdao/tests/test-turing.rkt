@@ -1,0 +1,51 @@
+#lang racket
+(require "../lang/tokenizer.rkt"
+         "../lang/parser.rkt")
+
+(define code #<<MINGDAO
+定义 运行 就是函 状态, 纸带, 位置, 规则表：
+    定义 当前符号 就是 索引, 纸带, 位置
+    定义 索引位置 就是 2 乘 状态 加 当前符号
+    定义 规则 就是 索引, 规则表, 索引位置
+    如果 规则 等于 空值 那么：
+        返回 纸带
+    否则：
+        定义 写入 就是 索引, 规则, 0
+        定义 移动 就是 索引, 规则, 1
+        定义 新状态 就是 索引, 规则, 2
+        赋值 纸带 为 列表修改, 纸带, 位置, 写入
+        如果 移动 等于 1 那么：
+            赋值 位置 为 位置 加 1
+        否则：
+            赋值 位置 为 位置 减 1
+        运行, 新状态, 纸带, 位置, 规则表
+
+定义 纸带 就是 列表 1, 0, 1, 0, 0, 1, 1, 0
+定义 规则表 就是 列表
+    列表 1, 1, 0,
+    列表 0, 1, 1,
+    列表 1, 1, 1,
+    列表 0, 0, 2
+运行, 0, 纸带, 0, 规则表
+MINGDAO
+)
+
+(displayln "=== Tokens ===")
+(define tokens (tokenize code))
+(for ([tok tokens])
+  (displayln (format "  ~a" tok)))
+
+(displayln "\n=== AST ===")
+(define ast (parse tokens))
+(for ([stmt ast])
+  (displayln (format "  ~a" stmt)))
+
+(displayln "\n=== Execution ===")
+(define ns (make-base-namespace))
+(define core-path
+  (path->string (build-path (current-directory) ".." "core.rkt")))
+(eval `(require (file ,core-path)) ns)
+(for ([stmt ast])
+  (eval stmt ns))
+
+(displayln "\nDone!")

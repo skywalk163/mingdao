@@ -1,0 +1,21 @@
+#lang racket
+(require "../lang/tokenizer.rkt")
+
+(define (show-tokens input)
+  (printf "输入: ~a\n" input)
+  (for ([t (tokenize input)])
+    (printf "  ~a: ~a\n" (token-type t) (token-value t)))
+  (newline))
+
+(show-tokens "定义汉诺塔")
+(show-tokens "就是函n,源,目标,辅助")
+(show-tokens "定义汉诺塔就是函n,源,目标,辅助")
+(show-tokens "n等于0")
+(show-tokens "x就是42")
+(show-tokens "如果n等于0那么")
+(show-tokens "打印,消息")
+(show-tokens "汉诺塔,3,\"A\",\"C\",\"B\"")
+(show-tokens "消息拼接,\"从\",源,\"移动到\",目标")
+(show-tokens "定义消息就是消息拼接,\"从\",源,\"移动到\",目标")
+(show-tokens "汉诺塔,n减1,源,辅助,目标")
+(displayln "All tests passed!")

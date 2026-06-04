@@ -1,0 +1,28 @@
+# Racket compiled files
+*.zo
+*.dep
+compiled/
+
+# Test files (root level only)
+/test-*.rkt
+/test-*.txt
+
+# Session artifacts
+EXAMPLES.md
+FINAL_SUMMARY.md
+PROGRESS.md
+STATUS.md
+VERIFICATION_REPORT.md
+nul
+
+# IDE and editor
+.dumate/
+.trae/
+
+# Windows executable
+*.exe
+
+# Build output
+*.o
+*.so
+*.dll
