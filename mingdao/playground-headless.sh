@@ -1,14 +1,21 @@
 #!/bin/bash
 # 明道语言 Playground - 无头环境启动脚本
-# 使用轻量级版本，无GUI依赖
+# 使用轻量级版本，无GUI依赖，绑定到 0.0.0.0
 
 echo "=========================================="
 echo "明道语言 Playground (轻量级版本) 正在启动..."
 echo "=========================================="
 
-echo "访问地址: http://localhost:8080"
+# 获取服务器IP地址
+SERVER_IP=$(hostname -I | awk '{print $1}')
+if [ -z "$SERVER_IP" ]; then
+    SERVER_IP="<服务器IP>"
+fi
+
+echo "本地访问: http://localhost:8080"
+echo "外部访问: http://$SERVER_IP:8080"
 echo ""
-echo "如需从其他机器访问，请修改脚本中的端口绑定地址"
+echo "已绑定到 0.0.0.0，可从其他机器访问"
 echo "按 Ctrl+C 停止服务"
 echo "=========================================="
 echo ""

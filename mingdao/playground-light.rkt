@@ -318,9 +318,10 @@ HTML
 
 ;; 启动HTTP服务器
 (define (start-server port)
-  (define listener (tcp-listen port 5 #t))
+  (define listener (tcp-listen port 5 #t "0.0.0.0"))
   (printf "明道语言 Playground (轻量级版本) 启动中...\n")
   (printf "访问地址: http://localhost:~a\n" port)
+  (printf "外部访问: http://<服务器IP>:~a\n" port)
   (printf "按 Ctrl+C 停止服务器\n")
   (let loop ()
     (define client (tcp-accept listener))
