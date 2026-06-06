@@ -532,17 +532,12 @@
     
     (define first (car items))
     (cond
-      ;; 如果第一个项是注册的函数名（符号形式），则作为主调函数
-      [(and (symbol? first) (function-name? (symbol->string first)))
-       (define processed-args (map unwrap-func-ref (cdr items)))
-       (when (eq? first '新建)
-         (set! processed-args (map (lambda (arg) (list 'quote arg)) processed-args)))
-       `(,first ,@processed-args)]
-      ;; 如果第一个项是列表形式的函数引用（如 (游戏循环)），也作为主调函数
-      [(and (pair? first) (null? (cdr first)) (symbol? (car first))
-            (function-name? (symbol->string (car first))))
-       `(,(car first) ,@(map unwrap-func-ref (cdr items)))]
-      ;; 否则用SVO模式从右向左查找
+      ;; 如果只有一个项，直接返回
+      [(= (length items) 1)
+       first]
+      ;; 使用SVO模式从右向左查找函数（明道语言语法）
+      ;; 这确保了 "斐波那契, i, 打印" 正确解析为 "打印(斐波那契(i))"
+      ;; 而不是 "斐波那契(i, 打印)"
       [else
        (let ([result (build-svo-call items)])
          (if (= (length result) 1)
@@ -1742,6 +1737,29 @@
       [(match? 'KEYWORD "等待")
        (advance)
        `(等待 ,(parse-expression))]
+      ;; 代码即数据：引用（quote）
+      [(match? 'KEYWORD "引用")
+       (advance)
+       (cond
+         [(match? 'LPAREN)
+          (advance)
+          (define expr (parse-comma-exprs))
+          (expect 'RPAREN)
+          `(quote ,expr)]
+         [(match? 'COLON)
+          ;; 引用: 缩进块语法
+          (advance)
+          (skip-newlines)
+          (expect 'INDENT)
+          (define statements (parse-program))
+          (expect 'DEDENT)
+          `(quote (begin ,@statements))]
+         [else
+          `(quote ,(parse-expression))])]
+      ;; 代码即数据：执行（eval）
+      [(match? 'KEYWORD "执行")
+       (advance)
+       `(执行 ,(parse-expression))]
       [(match? 'KEYWORD "列表")
        (advance)
        (define elements '())

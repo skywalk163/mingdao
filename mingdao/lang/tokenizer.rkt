@@ -38,8 +38,8 @@
 (define 控制流关键字
   '("定义" "常量" "如果" "那么" "否则" "对于" "跳出" "继续" "返回"
     "导入" "导出" "模块" "赋值" "尝试" "捕获" "匹配" "始终"
-    "或" "开始" "结束" "产出" "接口" "实现" "方法" "类" "自己" "属性" "异步" "等待" "未来"   ;; 联合类型 + 匿名函数块 + 生成器 + 接口/特质 + 面向对象 + 异步协程
-    ))
+    "或" "开始" "结束" "产出" "接口" "实现" "方法" "类" "自己" "属性" "异步" "等待" "未来"
+    "引用" "执行"))
 
 ;; 声明关键字（双字）
 (define 声明关键字
@@ -122,7 +122,8 @@
           '("列表修改" "消息拼接" "断言" "跟踪" "检查" "检查列表" "断点"
             "调试输出" "记录" "调用堆栈"
             "测试" "测试组" "断言测试" "断言相等"
-            "断言不等" "断言异常" "运行测试")))  ;; 兼容旧代码的函数名
+            "断言不等" "断言异常" "运行测试"
+            "引用" "执行")))
 
 ;; 判断是否为中文字符
 (define (中文? ch)
@@ -549,22 +550,22 @@
               (set! tokens (cons (token 'KEYWORD potential-three-char line (- col 2)) tokens))]
              
              ;; 双字关键字
-              ;; 标识符边界关键字（控制流、声明、比较、管道、运算符等）无条件拆分
-              ;; 非边界双字关键字（索引、长度、列表等）检查第三个字符是否中文且不能构成关键字，若是则合并为标识符
-              [(member potential-two-char 双字关键字)
-               (if (member potential-two-char 标识符边界关键字)
-                   ;; 边界关键字：无条件拆分
-                   (begin
-                     (advance)
-                     (set! tokens (cons (token 'KEYWORD potential-two-char line (- col 1)) tokens)))
-                   ;; 非边界双字关键字（索引、长度、列表等）：检查是否需要合并
-                   (let ([third-char (peek 1)])
-                     (if (and third-char (中文? third-char)
-                              (not (can-form-keyword? third-char 1)))
-                         (set! tokens (cons (read-identifier ch) tokens))
-                         (begin
-                           (advance)
-                           (set! tokens (cons (token 'KEYWORD potential-two-char line (- col 1)) tokens))))))]
+             ;; 标识符边界关键字（控制流、声明、比较、管道、运算符等）无条件拆分
+             ;; 非边界双字关键字（索引、长度、列表等）检查第三个字符是否中文且不能构成关键字，若是则合并为标识符
+             [(member potential-two-char 双字关键字)
+              (if (member potential-two-char 标识符边界关键字)
+                  ;; 边界关键字：无条件拆分
+                  (begin
+                    (advance)
+                    (set! tokens (cons (token 'KEYWORD potential-two-char line (- col 1)) tokens)))
+                  ;; 非边界双字关键字（索引、长度、列表等）：检查是否需要合并
+                  (let ([third-char (peek 1)])
+                    (if (and third-char (中文? third-char)
+                             (not (can-form-keyword? third-char 1)))
+                        (set! tokens (cons (read-identifier ch) tokens))
+                        (begin
+                          (advance)
+                          (set! tokens (cons (token 'KEYWORD potential-two-char line (- col 1)) tokens))))))]
              
              ;; 单字关键字（边界由read-identifier处理）
              [(member (string ch) 单字关键字)
@@ -609,6 +610,12 @@
         [(char=? ch #\?)
          (advance)
          (set! tokens (cons (token 'OPERATOR "?" line col) tokens))
+         (main-loop)]
+        
+        ;; 赋值运算符 =
+        [(char=? ch #\=)
+         (advance)
+         (set! tokens (cons (token 'OPERATOR "=" line col) tokens))
          (main-loop)]
         
         ;; 管道符号 |

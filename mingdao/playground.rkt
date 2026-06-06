@@ -662,10 +662,10 @@ HTML
 ;; 启动服务
 (define (main)
   (printf "明道语言 Playground 启动中...\n")
-  (printf "访问地址: http://localhost:8080\n")
+  (printf "访问地址: http://localhost:8082\n")
   (printf "按 Ctrl+C 停止服务器\n")
   (serve/servlet start
-   #:port 8080
+   #:port 8082
    #:servlet-path "/"
    #:servlet-regexp #rx"^/"
    #:server-root-path (current-directory)
