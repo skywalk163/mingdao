@@ -1,0 +1,7 @@
+#lang reader "../lang/reader.rkt"
+
+赋值 未定义变量 为 5
+未定义变量, 打印
+定义 x 就是 1
+定义 x 就是 2
+x, 打印
