@@ -38,6 +38,6 @@ jobs:
               tests/_debug*) continue ;;
             esac
             echo "=== Running $f ==="
-            racket "$f" || echo "⚠ Warning: $f failed (may need test framework)"
+            racket "$f" || exit 1
           done
           echo "Language tests completed."

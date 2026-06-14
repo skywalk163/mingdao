@@ -13,7 +13,7 @@
   (define ns (make-base-namespace))
   (parameterize ([current-namespace ns])
     (define core-path
-      (path->string (build-path (current-directory) ".." "core.rkt")))
+      (path->string (build-path (current-directory) "../core.rkt")))
     (eval `(require (file ,core-path)))
     (void))
   ns)

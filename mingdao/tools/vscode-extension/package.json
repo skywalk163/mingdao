@@ -2,10 +2,10 @@
   "name": "mingdao-language-support",
   "displayName": "明道语言支持",
   "description": "为明道语言提供语法高亮、代码补全、错误诊断等功能",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "mingdao",
   "engines": {
-    "vscode": "^1.60.0"
+    "vscode": "^1.85.0"
   },
   "categories": [
     "Programming Languages",
@@ -20,8 +20,14 @@
     "languages": [
       {
         "id": "mingdao",
-        "aliases": ["Mingdao", "明道"],
-        "extensions": [".mingdao", ".mdao"],
+        "aliases": [
+          "Mingdao",
+          "明道"
+        ],
+        "extensions": [
+          ".mingdao",
+          ".mdao"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -81,16 +87,21 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src/"
   },
   "devDependencies": {
-    "@types/node": "^16.x",
-    "@types/vscode": "^1.60.0",
-    "typescript": "^4.4.3",
-    "eslint": "^7.32.0"
+    "@eslint/js": "^9.24.0",
+    "@types/node": "^22.14.0",
+    "@types/vscode": "^1.85.0",
+    "eslint": "^9.24.0",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.61.0"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/mingdao-lang/mingdao-vscode"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^10.0.0"
   }
 }

@@ -1,9 +1,13 @@
 #lang racket/base
 
+;; 明道语言测试框架 - 基于 rackunit
+;; 提供中文 API 封装，兼容 rackunit 断言
+
 (require racket/list
          racket/string
          racket/format
-         racket/match)
+         racket/match
+         rackunit)
 
 (provide 测试
          测试组
@@ -11,6 +15,8 @@
          断言相等
          断言不等
          断言异常
+         断言= 断言等于
+         断言≈ 断言约等于
          运行测试
          测试结果?
          测试结果-总数
@@ -19,7 +25,7 @@
          测试结果-详情)
 
 ;; ============================================================
-;; 测试状态
+;; 测试状态（仅用于运行测试的汇总报告）
 ;; ============================================================
 
 (define 测试总数 0)
@@ -30,40 +36,38 @@
 (struct 测试结果 (总数 通过 失败 详情) #:transparent)
 
 ;; ============================================================
-;; 断言宏（用于测试中）
+;; 断言函数（基于 rackunit）
 ;; ============================================================
-
-(define (raise-exn msg)
-  (raise (exn:fail msg (current-continuation-marks))))
 
 (define (断言测试 条件 [消息 ""])
-  (unless 条件
-    (raise-exn (format "断言失败：~a" (if (string=? 消息 "") 条件 消息))))
-  #t)
+  (if (string=? 消息 "")
+      (check-true 条件)
+      (check-true 条件 消息)))
 
 (define (断言相等 期望值 实际值 [消息 ""])
-  (unless (equal? 期望值 实际值)
-    (define 附加消息 (if (string=? 消息 "") "" (format " (~a)" 消息)))
-    (raise-exn (format "断言失败：期望 ~a，实际 ~a~a" 期望值 实际值 附加消息)))
-  #t)
+  (if (string=? 消息 "")
+      (check-equal? 实际值 期望值)
+      (check-equal? 实际值 期望值 消息)))
+
+(define 断言等于 断言相等)
+(define 断言= 断言相等)
+
+(define (断言≈ 期望值 实际值 精度 [消息 ""])
+  (if (string=? 消息 "")
+      (check-= 实际值 期望值 精度)
+      (check-= 实际值 期望值 精度 消息)))
+(define 断言约等于 断言≈)
 
 (define (断言不等 期望值 实际值 [消息 ""])
-  (when (equal? 期望值 实际值)
-    (define 附加消息 (if (string=? 消息 "") "" (format " (~a)" 消息)))
-    (raise-exn (format "断言失败：不应等于 ~a~a" 期望值 附加消息)))
-  #t)
+  (if (string=? 消息 "")
+      (check-not-equal? 实际值 期望值)
+      (check-not-equal? 实际值 期望值 消息)))
 
 (define (断言异常 异常类型 函数 参数)
-  (define 成功?
-    (with-handlers ([exn:fail? (λ (e) #t)])
-      (apply 函数 参数)
-      #f))
-  (unless 成功?
-    (raise-exn (format "断言失败：未抛出异常 ~a" 异常类型)))
-  #t)
+  (check-exn exn:fail? (λ () (apply 函数 参数))))
 
 ;; ============================================================
-;; 测试用例
+;; 测试用例（兼容原有 API）
 ;; ============================================================
 
 (define (测试 名称 测试表达式)
@@ -127,3 +131,20 @@
   (printf "\n")
   (flush-output)
   结果)
+
+;; ============================================================
+;; 兼容 rackunit 直接运行的模块宏
+;; ============================================================
+
+(provide test-module-start
+         test-module-end)
+
+(define-syntax-rule (test-module-start 名称)
+  (begin
+    (printf "\n═══════════════════════════════════════\n")
+    (printf "  📋 测试: ~a\n" 名称)
+    (printf "═══════════════════════════════════════\n")
+    (flush-output)))
+
+(define-syntax-rule (test-module-end)
+  (void))

@@ -16,7 +16,7 @@
                        (λ (e)
                          (parameterize ([current-error-port (current-output-port)])
                            (displayln "=== 明道语言解析错误 ===")
-                           (displayln (格式化异常 e content))
+                           (displayln (format-exception e content))
                            (raise e)))])
         (let ([ast (parse (tokenize content))])
           `(module 明道 racket/base
@@ -30,7 +30,7 @@
       (with-handlers ([exn:fail?
                        (λ (e)
                          (displayln "=== 明道语言解析错误 ===" (current-error-port))
-                         (displayln (格式化异常 e content) (current-error-port))
+                         (displayln (format-exception e content) (current-error-port))
                          (raise e))])
         (let ([ast (parse (tokenize content))])
           (datum->syntax #f

@@ -126,7 +126,7 @@
             "引用" "执行")))
 
 ;; 判断是否为中文字符
-(define (中文? ch)
+(define (chinese-char? ch)
   (and (char? ch)
        (let ([cp (char->integer ch)])
          (or (and (>= cp #x4E00) (<= cp #x9FFF))     ;; CJK 统一汉字
@@ -142,7 +142,7 @@
       (char=? ch #\tab)))
 
 ;; 判断是否为换行符
-(define (换行? ch)
+(define (newline-char? ch)
   (char=? ch #\newline))
 
 ;; 分词主函数
@@ -349,11 +349,11 @@
               1]
              [else #f]))))
   
-  ;; 标识符边界关键字（到达这些关键字时标识符停止，让主循环处理）
+  ;; boundary-keywords（到达这些关键字时标识符停止，让主循环处理）
 ;; 包括控制流、声明、循环、条件、比较、管道等结构性关键字
 ;; 不包括内置函数名关键字（如"索引""长度"）和数据结构关键字（如"列表"）
 ;; 这些函数名关键字可以作为复合标识符的组成部分（如"字符串索引""列表转字符串"）
-(define 标识符边界关键字
+(define boundary-keywords
   (remove-duplicates
    (append 控制流关键字 声明关键字 单字关键字
            循环关键字 条件关键字 比较关键字
@@ -365,8 +365,8 @@
 (define 标识符读边界关键字
   '("就是" "从" "到" "为" "然后" "经过" "大于" "小于" "等于" "不等" "那么"))
 
-;; 检查从当前位置能否构成标识符边界关键字
-(define (is-boundary-keyword? first-ch)
+;; 检查从当前位置能否构成boundary-keywords
+(define (boundary-keyword? first-ch)
   (and (char? first-ch)
        (let ([next1 (peek 1)]
              [next2 (peek 2)]
@@ -380,7 +380,7 @@
            ;; 三字关键字
            (and next1 next2
                 (member (string first-ch next1 next2) 三字关键字))
-           ;; 双字关键字（仅读标识符边界关键字，不包含主循环处理的控制流关键字）
+           ;; 双字关键字（仅读boundary-keywords，不包含主循环处理的控制流关键字）
            (and next1
                 (member (string first-ch next1) 标识符读边界关键字))))))
 
@@ -400,18 +400,18 @@
           ;; 单字运算符和单字关键字（加、减、乘、除、非、与、或、从、到、为等）作为标识符一部分继续读入
           ;; 因为read-identifier只在首字符不是运算符/关键字时被调用，
           ;; 后续遇到的运算符/关键字字符属于复合函数名的一部分
-          [(and ch (中文? ch) (or (member (string ch) 单字运算符)
+          [(and ch (chinese-char? ch) (or (member (string ch) 单字运算符)
                                   (member (string ch) 单字关键字)))
            (set! chars (cons ch chars))
            (advance)
            (loop)]
           ;; 普通中文字符，继续读入（先于边界关键字检查，避免单字运算符如"为"被误判为边界）
-          [(and ch (中文? ch) (not (is-boundary-keyword? ch)))
+          [(and ch (chinese-char? ch) (not (boundary-keyword? ch)))
            (set! chars (cons ch chars))
            (advance)
            (loop)]
-          ;; 标识符边界关键字（如"就是""从""到"）→ 停止，留给主循环处理
-          [(and ch (中文? ch) (is-boundary-keyword? ch))
+          ;; boundary-keywords（如"就是""从""到"）→ 停止，留给主循环处理
+          [(and ch (chinese-char? ch) (boundary-keyword? ch))
            (token 'IDENTIFIER (list->string (reverse chars)) start-line start-col)]
           ;; 英文/数字/下划线/连字符/斜杠
           [(and ch (or (char-alphabetic? ch) (char-numeric? ch) (char=? ch #\_) (char=? ch #\-) (char=? ch #\/)))
@@ -452,7 +452,7 @@
          (reverse tokens)]
         
         ;; 换行符
-        [(换行? ch)
+        [(newline-char? ch)
          (advance-line)
          ;; 生成 NEWLINE token 来分隔语句
          (set! tokens (cons (token 'NEWLINE #f line col) tokens))
@@ -488,7 +488,7 @@
          ;; 跳过到行尾
          (let comment-loop ()
            (let ([next (peek)])
-             (when (and next (not (换行? next)))
+             (when (and next (not (newline-char? next)))
                (advance)
                (comment-loop))))
          (main-loop)]
@@ -529,7 +529,7 @@
          (main-loop)]
         
         ;; 中文（可能是关键字或标识符）
-        [(中文? ch)
+        [(chinese-char? ch)
          (advance)
          ;; 尝试匹配四字关键字
          (let* ([potential-four-char (string ch (or (peek) #\space) (or (peek 1) #\space) (or (peek 2) #\space))]
@@ -550,17 +550,17 @@
               (set! tokens (cons (token 'KEYWORD potential-three-char line (- col 2)) tokens))]
              
              ;; 双字关键字
-             ;; 标识符边界关键字（控制流、声明、比较、管道、运算符等）无条件拆分
+             ;; boundary-keywords（控制流、声明、比较、管道、运算符等）无条件拆分
              ;; 非边界双字关键字（索引、长度、列表等）检查第三个字符是否中文且不能构成关键字，若是则合并为标识符
              [(member potential-two-char 双字关键字)
-              (if (member potential-two-char 标识符边界关键字)
+              (if (member potential-two-char boundary-keywords)
                   ;; 边界关键字：无条件拆分
                   (begin
                     (advance)
                     (set! tokens (cons (token 'KEYWORD potential-two-char line (- col 1)) tokens)))
                   ;; 非边界双字关键字（索引、长度、列表等）：检查是否需要合并
                   (let ([third-char (peek 1)])
-                    (if (and third-char (中文? third-char)
+                    (if (and third-char (chinese-char? third-char)
                              (not (can-form-keyword? third-char 1)))
                         (set! tokens (cons (read-identifier ch) tokens))
                         (begin
@@ -580,7 +580,7 @@
              ;; 算术运算符后跟中文且不构成关键字，可能是复合标识符（如"追加多个"）
              [(member (string ch) 单字运算符)
               (let ([next (peek)])
-                (if (and next (中文? next) (not (can-form-keyword? next))
+                (if (and next (chinese-char? next) (not (can-form-keyword? next))
                          (member (string ch) 算术运算符))  ;; 仅算术运算符参与复合
                     (set! tokens (cons (read-identifier ch) tokens))
                     (set! tokens (cons (token 'OPERATOR (string ch) line col) tokens))))]
@@ -668,21 +668,21 @@
                (cond
                  ;; 单字运算符和单字关键字（加、减、从、到、为等）作为标识符一部分继续读入
                  ;; 允许复合函数名（如"追加多个"）包含运算符
-                 [(and next (中文? next) (or (member (string next) 单字运算符)
+                 [(and next (chinese-char? next) (or (member (string next) 单字运算符)
                                               (member (string next) 单字关键字)))
                   (set! chars (cons next chars))
                   (advance)
                   (ident-loop)]
-                 ;; 标识符边界关键字（单字/多字关键字）→ 停止，留给主循环处理
-                 [(and next (中文? next) (is-boundary-keyword? next))
+                 ;; boundary-keywords（单字/多字关键字）→ 停止，留给主循环处理
+                 [(and next (chinese-char? next) (boundary-keyword? next))
                   (void)]
                  ;; 普通中文字符，继续读入
-                 [(and next (中文? next))
+                 [(and next (chinese-char? next))
                   (set! chars (cons next chars))
                   (advance)
                   (ident-loop)]
                  ;; 英文/数字/下划线/连字符/斜杠 → 继续读入
-                 [(and next (not (中文? next)) (or (char-alphabetic? next) (char-numeric? next) (char=? next #\_) (char=? next #\-) (char=? next #\/)))
+                 [(and next (not (chinese-char? next)) (or (char-alphabetic? next) (char-numeric? next) (char=? next #\_) (char=? next #\-) (char=? next #\/)))
                   (set! chars (cons next chars))
                   (advance)
                   (ident-loop)]
@@ -694,7 +694,7 @@
          (let* ([字符描述 (cond
                             [(and (char>=? ch #\space) (char<=? ch #\~))
                              (format "'~a'（ASCII码: ~a）" ch (char->integer ch))]
-                            [(中文? ch)
+                            [(chinese-char? ch)
                              (format "'~a'（中文字符）" ch)]
                             [else
                              (format "'~a'（Unicode码点: ~a）" ch (char->integer ch))])]

@@ -3,7 +3,7 @@
 (define name "明道语言")
 (define description "明道语言 - 中文无空格编程语言")
 (define categories '(devtools))
-(define version "1.1")
+(define version "1.2")
 (define racket-version "9.2")
 (define repo "https://gitcode.com/skywalk163/mingdao")
 (define blurb

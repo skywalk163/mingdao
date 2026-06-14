@@ -49,11 +49,11 @@
 ;; ============================================================
 (displayln "▶ 验证 error.rkt 增强...")
 
-(display "  ✓ 格式化异常: ") (displayln (procedure? 格式化异常))
-(display "  ✓ 错误摘要: ") (displayln (procedure? 错误摘要))
-(display "  ✓ 运行时错误: ") (displayln (procedure? 运行时错误))
-(display "  ✓ 类型错误: ") (displayln (procedure? 类型错误))
-(display "  ✓ 断言失败错误: ") (displayln (procedure? 断言失败错误))
+(display "  ✓ 格式化异常: ") (displayln (procedure? format-exception))
+(display "  ✓ 错误摘要: ") (displayln (procedure? error-summary))
+(display "  ✓ 运行时错误: ") (displayln (procedure? raise-runtime-error))
+(display "  ✓ 类型错误: ") (displayln (procedure? raise-type-error))
+(display "  ✓ 断言失败错误: ") (displayln (procedure? assertion-failed-error))
 
 (displayln "")
 
@@ -152,8 +152,8 @@
 ;; ============================================================
 (displayln "▶ 功能测试：错误格式化...")
 
-(define err (运行时错误 "测试错误信息" 10 5 "请检查代码"))
-(define formatted (格式化错误信息 err))
+(define err (raise-runtime-error "测试错误信息" 10 5 "请检查代码"))
+(define formatted (format-error-message err))
 
 (if (and (string-contains? formatted "运行时错误")
          (string-contains? formatted "第 10 行")
@@ -162,7 +162,7 @@
     (displayln "  ✓ 错误格式化完整正确")
     (displayln "  ✗ 错误格式化不完整"))
 
-(define summary (错误摘要 err))
+(define summary (error-summary err))
 (if (string-contains? summary "运行时错误")
     (displayln "  ✓ 错误摘要正确")
     (displayln "  ✗ 错误摘要异常"))

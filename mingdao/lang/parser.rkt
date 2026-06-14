@@ -9,17 +9,17 @@
          racket/match)
 
 (provide parse
-         是类型名?
-         类型名列表
+         type-name?
+         type-name-list
          get-type-annotations
          reset-type-annotations!)
 
 ;; 内置类型名（用于类型标注）
-(define 类型名列表
+(define type-name-list
   '("整数" "浮点数" "字符串" "布尔" "空值" "任意" "列表" "字典"))
 
-(define (是类型名? str)
-  (member str 类型名列表))
+(define (type-name? str)
+  (member str type-name-list))
 
 ;; 解析入口
 (define (parse tokens [extra-function-names #f])
@@ -364,10 +364,10 @@
       [(match? 'IDENTIFIER) (advance)]
       [(and (match? 'KEYWORD) (function-name? (token-value tok)))
        (advance)]
-      [(and (match? 'KEYWORD) (是类型名? (token-value tok)))
+      [(and (match? 'KEYWORD) (type-name? (token-value tok)))
        (advance)]
       [else
-       (error 'parse (期望错误提示 'IDENTIFIER tok))]))
+       (error 'parse (expected-error-hint 'IDENTIFIER tok))]))
   
   (define (peek [offset 0])
     (if (< (+ pos offset) (length tokens))
@@ -400,7 +400,7 @@
       [(FSTRING) "插值字符串"]
       [else (symbol->string type)]))
   
-  (define (期望错误提示 type tok)
+  (define (expected-error-hint type tok)
     (define 期望描述 (类型中文 type))
     (define 实际描述 
       (if tok
@@ -416,7 +416,7 @@
     (unless tok 
       (error 'parse (format "意外的文件结束，请检查代码是否完整 (正在期望 ~a)" (类型中文 type))))
     (unless (eq? (token-type tok) type)
-      (error 'parse (期望错误提示 type tok)))
+      (error 'parse (expected-error-hint type tok)))
     (when (and value (not (equal? (token-value tok) value)))
       (error 'parse 
              (format "期望 '~a'，但得到 '~a'（第 ~a 行）~a"
@@ -847,7 +847,7 @@
                         (eq? (token-type next-tok) 'LEFT_ANGLE)
                         (and (eq? (token-type next-tok) 'OPERATOR)
                              (equal? (token-value next-tok) "或")))
-                    (or (是类型名? (token-value next-tok))
+                    (or (type-name? (token-value next-tok))
                         (eq? (token-type next-tok) 'LEFT_ANGLE)
                         (and (eq? (token-type next-tok) 'OPERATOR)
                              (equal? (token-value next-tok) "或"))))
@@ -1051,10 +1051,10 @@
                  ;; 检查冒号后是否为合法的类型起始标记
                  (if (and next-tok
                   (or (and (eq? (token-type next-tok) 'IDENTIFIER)
-                           (是类型名? (token-value next-tok)))
+                           (type-name? (token-value next-tok)))
                       (eq? (token-type next-tok) 'LEFT_ANGLE)
                       (and (eq? (token-type next-tok) 'KEYWORD)
-                           (是类型名? (token-value next-tok)))
+                           (type-name? (token-value next-tok)))
                       (and (eq? (token-type next-tok) 'OPERATOR)
                            (equal? (token-value next-tok) "或"))))
                      (begin

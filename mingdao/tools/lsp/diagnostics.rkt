@@ -2,9 +2,10 @@
 
 (require racket/hash
          racket/string
+         "text-sync.rkt"
          (prefix-in parser: "../../lang/parser.rkt")
          (prefix-in tokenizer: "../../lang/tokenizer.rkt")
-         (prefix-in error: "../../lang/error.rkt"))
+         (prefix-in typechecker: "../../lang/type-checker.rkt"))
 
 (provide make-diagnostics
          diagnostics-compute)
@@ -23,26 +24,53 @@
       (collect-diagnostics text)
       '()))
 
-;; 收集诊断信息
+;; 收集诊断信息 — 分词 → 解析 → 类型检查
 (define (collect-diagnostics text)
-  (with-handlers ([exn:fail? (λ (e)
-                              (list (make-error-diagnostic 0 0 (exn-message e))))])
-    (define tokens (tokenizer:tokenize text))
-    (define ast (parser:parse tokens))
-    '()))
-
-;; 创建错误诊断
-(define (make-error-diagnostic line char message)
-  (hash 'range (hash 'start (hash 'line line 'character char)
-                      'end (hash 'line line 'character (+ char 1)))
-         'severity 1
-         'source "明道语言"
-         'message message))
-
-;; 创建警告诊断
-(define (make-warning-diagnostic line char message)
-  (hash 'range (hash 'start (hash 'line line 'character char)
-                      'end (hash 'line line 'character (+ char 1)))
-         'severity 2
-         'source "明道语言"
-         'message message))
+  (let/ec return
+    (define diagnostics '())
+    
+    ;; 收集诊断的辅助函数
+    (define (add-diagnostic line char severity msg)
+      (define range
+        (hash 'start (hash 'line line 'character (max 0 (sub1 char)))
+              'end (hash 'line line 'character (+ char 1))))
+      (set! diagnostics
+            (cons (hash 'range range
+                        'severity severity
+                        'source "明道语言"
+                        'message msg)
+                  diagnostics)))
+    
+    ;; 1. 分词阶段
+    (define tokens
+      (with-handlers ([exn:fail? (λ (e)
+                                   (define msg (exn-message e))
+                                   (cond
+                                     [(regexp-match #rx"第 (\\d+) 行，第 (\\d+) 列" msg)
+                                      => (λ (m)
+                                           (define line (string->number (cadr m)))
+                                           (define col (string->number (caddr m)))
+                                           (add-diagnostic (sub1 line) (sub1 col) 1 msg))]
+                                     [else
+                                      (add-diagnostic 0 0 1 msg)])
+                                   '())])
+        (tokenizer:tokenize text)))
+    (when (null? tokens)
+      (return (reverse diagnostics)))
+    
+    ;; 2. 解析阶段
+    (define ast
+      (with-handlers ([exn:fail? (λ (e)
+                                   (add-diagnostic 0 0 1 (exn-message e))
+                                   #f)])
+        (parser:parse tokens)))
+    
+    (unless ast
+      (return (reverse diagnostics)))
+    
+    ;; 3. 类型检查阶段（警告级别，不阻断）
+    (with-handlers ([exn:fail? (λ (e) (void))])
+      (typechecker:check-types ast #hasheq() #hasheq()
+                               (λ (msg) (add-diagnostic 0 0 2 msg))))
+    
+    (reverse diagnostics)))

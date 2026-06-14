@@ -129,7 +129,7 @@
                                                     内置函数关键字 比较关键字 特殊值关键字
                                                     管道关键字 单字关键字 四字关键字
                                                     三字关键字 双字关键字 单字运算符
-                                                    所有函数名 标识符读边界关键字)))))
+                                                    所有函数名 read-boundary-keywords)))))
     (symbol->string (cadr expr))))
 
 (define tokenizer-names (extract-defined-names tokenizer-ast))

@@ -1,7 +1,8 @@
 #lang racket/base
 
 (require racket/hash
-         racket/string)
+         racket/string
+         racket/match)
 
 (provide make-text-sync
          text-sync-open

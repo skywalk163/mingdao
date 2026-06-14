@@ -27,7 +27,7 @@
                  [current-namespace ns])
     (with-handlers ([exn:fail?
                      (λ (e)
-                       (displayln (格式化异常 e)))])
+                       (displayln (format-exception e)))])
       (call-with-values
         (λ () (eval expr))
         (λ results

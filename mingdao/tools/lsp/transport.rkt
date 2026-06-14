@@ -9,20 +9,27 @@
          transport-read
          transport-write)
 
-;; 传输层接口
-(struct transport (read write))
+;; 传输层接口 — 使用 reader/writer 避免与包装函数名冲突
+(struct transport (reader writer))
 
 ;; 创建标准IO传输
 (define (make-stdio-transport)
-  (transport (λ () (read-message))
-             (λ (msg) (write-message msg))))
+  (transport read-message write-message))
 
-;; 读取消息
+;; 包装函数：读消息
+(define (transport-read tr)
+  ((transport-reader tr)))
+
+;; 包装函数：写消息
+(define (transport-write tr msg)
+  ((transport-writer tr) msg))
+
+;; 读取消息（JSON-RPC 的 Content-Length 协议）
 (define (read-message)
   (with-handlers ([exn:fail? (λ (e) #f)])
     (define header-line (read-line (current-input-port)))
     (when (eof-object? header-line)
-      (eof-object))
+      eof)
     (if (string-prefix? header-line "Content-Length: ")
         (let* ([length-str (string-trim (substring header-line (string-length "Content-Length: ")))]
                [content-length (string->number length-str)])
