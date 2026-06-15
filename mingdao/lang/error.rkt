@@ -2,7 +2,9 @@
 
 (require racket/format
          racket/string
-         racket/match)
+         racket/match
+         racket/port
+         json)
 
 (provide mingdao-error
          raise-syntax-error
@@ -18,12 +20,68 @@
          error-with-source
          error-summary
          type-mismatch-error
-         duplicate-definition-error)
+         duplicate-definition-error
+         source-span
+         color-output-enabled?
+         terminal-supports-colors?
+         color
+         red
+         blue
+         cyan
+         gray
+         yellow
+         error-label
+         gutter
+         hint-label
+         show-context
+         get-error-code
+         format-rust-style
+         error->json
+         add-child-error
+         make-nested-error)
 
+;; ============================================================
 ;; Error structure
-(struct mingdao-error (type message line col suggestion source) #:transparent)
+;; ============================================================
 
-;; Syntax error
+(struct mingdao-error (type message line col suggestion source children) #:transparent)
+
+;; 源位置信息（用于子错误标记）
+(struct source-span (line-start line-end col-start col-end label) #:transparent)
+
+;; ============================================================
+;; ANSI 颜色系统
+;; ============================================================
+
+(define color-output-enabled? (make-parameter #t))
+
+(define (terminal-supports-colors?)
+  (and (color-output-enabled?)
+       (not (getenv "NO_COLOR"))
+       (let ([out (current-output-port)])
+         (or (terminal-port? out)
+             (terminal-port? (current-error-port))))))
+
+(define (color code str)
+  (if (terminal-supports-colors?)
+      (format "\x1b[~am~a\x1b[0m" code str)
+      str))
+
+(define (red str)    (color 31 str))
+(define (blue str)   (color 34 str))
+(define (cyan str)   (color 36 str))
+(define (gray str)   (color 90 str))
+(define (yellow str) (color 33 str))
+(define (red-bg str) (color 41 str))
+
+(define (error-label str) (red str))
+(define (gutter str)      (gray str))
+(define (hint-label str)  (cyan str))
+
+;; ============================================================
+;; Error constructors — 保留原始 API，追加空列表 children
+;; ============================================================
+
 (define (raise-syntax-error msg line col)
   (define suggestion
     (cond
@@ -34,9 +92,8 @@
       [(string-contains? msg "token")
        "请检查代码格式"]
       [else #f]))
-  (mingdao-error '语法错误 msg line col suggestion #f))
+  (mingdao-error '语法错误 msg line col suggestion #f '()))
 
-;; Expected error (expected token but got something else)
 (define (expected-error expected-type actual-token line col)
   (define suggestion
     (cond
@@ -62,9 +119,8 @@
        (format "此处需要 ~a" expected-type)]))
   (mingdao-error '期望错误
                  (format "期望 ~a，但得到 ~a" expected-type (token-type-description actual-token))
-                 line col suggestion #f))
+                 line col suggestion #f '()))
 
-;; Undefined error
 (define (undefined-error name kind line col)
   (define suggestion
     (cond
@@ -80,9 +136,8 @@
                name)]))
   (mingdao-error '未定义错误
                  (format "~a '~a' 未定义" kind name)
-                 line col suggestion #f))
+                 line col suggestion #f '()))
 
-;; Argument error
 (define (raise-argument-error fn expected-count actual-count line col)
   (define suggestion
     (cond
@@ -96,9 +151,8 @@
        "请检查函数调用时的参数数量"]))
   (mingdao-error '参数错误
                  (format "函数 '~a' 期望 ~a 个参数，但得到 ~a 个" fn expected-count actual-count)
-                 line col suggestion #f))
+                 line col suggestion #f '()))
 
-;; Runtime error
 (define (raise-runtime-error msg line col [suggestion #f])
   (define default-suggestion
     (cond
@@ -111,9 +165,8 @@
       [(string-contains? msg "文件")
        "请检查文件路径是否正确，文件是否存在"]
       [else #f]))
-  (mingdao-error '运行时错误 msg line col (or suggestion default-suggestion) #f))
+  (mingdao-error '运行时错误 msg line col (or suggestion default-suggestion) #f '()))
 
-;; Type error
 (define (raise-type-error expected-type actual-value line col)
   (define actual-type
     (cond
@@ -137,9 +190,8 @@
        (format "请检查变量类型是否匹配，期望 ~a 类型" expected-type)]))
   (mingdao-error '类型错误
                  (format "类型错误：期望 ~a，但得到 ~a" expected-type actual-type)
-                 line col suggestion #f))
+                 line col suggestion #f '()))
 
-;; Type mismatch error (more detailed)
 (define (type-mismatch-error var-name expected-type actual-type line col)
   (define suggestion
     (cond
@@ -158,9 +210,8 @@
        (format "请确保变量 '~a' 的类型为 ~a" var-name expected-type)]))
   (mingdao-error '类型错误
                  (format "变量 '~a' 的类型不匹配：期望 ~a，但得到 ~a" var-name expected-type actual-type)
-                 line col suggestion #f))
+                 line col suggestion #f '()))
 
-;; Duplicate definition error
 (define (duplicate-definition-error name kind line col)
   (define suggestion
     (cond
@@ -174,18 +225,16 @@
        (format "~a '~a' 已被定义" kind name)]))
   (mingdao-error '重复定义错误
                  (format "~a '~a' 重复定义" kind name)
-                 line col suggestion #f))
+                 line col suggestion #f '()))
 
-;; Assertion failed error
 (define (assertion-failed-error msg expression line col)
   (define display-msg (if (string=? msg "") "断言失败" msg))
   (mingdao-error '断言错误
                  (format "断言失败：~a" display-msg)
                  line col
                  "请检查条件表达式是否满足预期"
-                 #f))
+                 #f '()))
 
-;; Token type description (for error hints)
 (define (token-type-description token-value)
   (cond
     [(string? token-value)
@@ -204,10 +253,182 @@
     [else (format "~a" token-value)]))
 
 ;; ============================================================
-;; Error formatting — three output modes: detailed, standard, summary
+;; 多行上下文 + 精确字符标记（Rust 风格）
 ;; ============================================================
 
-;; Format any exception as friendly Chinese message
+(define (show-context source-code line col #:context-size [context-size 1] #:label [label #f])
+  (define lines (string-split source-code "\n"))
+  (define line-count (length lines))
+  (define safe-line (max 1 (min line (if (= line-count 0) 1 line-count))))
+  (define start (max 0 (- safe-line context-size 1)))
+  (define end (min line-count (+ safe-line context-size)))
+  (define gutter-width (string-length (number->string end)))
+  (define err-col (max 1 (min col 200)))
+
+  (string-join
+   (apply
+    append
+    (for/list ([i (in-range start end)])
+      (define line-num (+ i 1))
+      (define line-str (list-ref lines i))
+      (define is-error-line (= line-num safe-line))
+      (define gutter-line (format "~a │" (~r line-num #:min-width gutter-width)))
+      (if is-error-line
+          (let* ([mark-col (min err-col (max 1 (string-length line-str)))]
+                 [arrow (make-string (sub1 mark-col) #\space)]
+                 [marks "^^^^^^^^"]
+                 [label-part (if label (format " ~a" label) "")])
+            (list (format "~a ~a" gutter-line line-str)
+                  (format "~a │ ~a~a~a"
+                          (make-string gutter-width #\space)
+                          arrow marks label-part)))
+          (list (format "~a ~a" gutter-line line-str)))))
+   "\n"))
+
+(define (show-code-line source-code line col)
+  (define lines (string-split source-code "\n"))
+  (if (and (> (length lines) (sub1 line))
+           (> line 0))
+      (let* ([code-line (list-ref lines (sub1 line))]
+             [arrow (make-string (max 0 (sub1 col)) #\space)])
+        (string-append
+         code-line "\n"
+         arrow "^── 这里"))
+      (if (and (> (length lines) (sub1 line)) (> line 0))
+          (list-ref lines (sub1 line))
+          "")))
+
+;; ============================================================
+;; 错误代码映射（E0001-E9999）
+;; ============================================================
+
+(define (get-error-code err-type)
+  (case err-type
+    [(语法错误 期望错误) "E0001"]
+    [(类型错误) "E0002"]
+    [(未定义错误) "E0003"]
+    [(参数错误) "E0004"]
+    [(运行时错误) "E0005"]
+    [(重复定义错误) "E0006"]
+    [(断言错误) "E0007"]
+    [(访问错误) "E0008"]
+    [else "E9999"]))
+
+(define (type->chinese err-type)
+  (case err-type
+    [(语法错误) "语法错误"]
+    [(期望错误) "语法错误"]
+    [(未定义错误) "命名错误"]
+    [(参数错误) "参数错误"]
+    [(运行时错误) "运行时错误"]
+    [(类型错误) "类型错误"]
+    [(断言错误) "断言错误"]
+    [else "未知错误"]))
+
+;; ============================================================
+;; Rust 风格彩色错误输出
+;; ============================================================
+
+(define (format-rust-style err #:source [source-code #f])
+  (define err-type (mingdao-error-type err))
+  (define err-msg (mingdao-error-message err))
+  (define err-line (or (mingdao-error-line err) 1))
+  (define err-col (or (mingdao-error-col err) 1))
+  (define err-suggestion (mingdao-error-suggestion err))
+  (define err-source (or source-code (mingdao-error-source err)))
+  (define err-children (or (mingdao-error-children err) '()))
+  (define code (get-error-code err-type))
+  (define source-label (or (mingdao-error-source err) "<unknown>"))
+
+  (string-join
+   (append
+    (list
+     (format "~a [~a] ~a" (error-label "error") code (type->chinese err-type))
+     (format " --> ~a:~a:~a" (blue source-label) err-line err-col)
+     (format "~a │" (gutter "")))
+    (if err-source
+        (list (show-context err-source err-line err-col #:label err-msg))
+        '())
+    (if err-suggestion
+        (list (format " = ~a" (hint-label (format "提示：~a" err-suggestion))))
+        '())
+    (if (not (null? err-children))
+        (cons " Caused by:"
+              (for/list ([child err-children])
+                (format "    [~a] ~a（第 ~a 行）"
+                        (get-error-code (mingdao-error-type child))
+                        (mingdao-error-message child)
+                        (or (mingdao-error-line child) 0))))
+        '())
+    (list ""))
+   "\n"))
+
+;; ============================================================
+;; JSON 结构化输出（供 IDE/LSP 使用）
+;; ============================================================
+
+(define (error->json err #:source [source-code #f])
+  (define err-type (mingdao-error-type err))
+  (define err-line (or (mingdao-error-line err) 1))
+  (define err-col (or (mingdao-error-col err) 1))
+  (define err-source (or source-code (mingdao-error-source err)))
+
+  (define main-span
+    (hash 'line_start err-line
+          'line_end err-line
+          'column_start err-col
+          'column_end (+ err-col 5)
+          'text (if err-source
+                    (let* ([lines (string-split err-source "\n")]
+                           [idx (sub1 err-line)])
+                      (if (and (>= idx 0) (< idx (length lines)))
+                          (list-ref lines idx)
+                          ""))
+                    "")
+          'label (mingdao-error-message err)
+          'is_primary #t
+          'file_name (or (mingdao-error-source err) "main.mingdao")))
+
+  (define (child->json child)
+    (hash 'message (mingdao-error-message child)
+          'spans (list
+                  (hash 'line_start (or (mingdao-error-line child) 1)
+                        'line_end (or (mingdao-error-line child) 1)
+                        'column_start (or (mingdao-error-col child) 1)
+                        'column_end (+ (or (mingdao-error-col child) 1) 3)
+                        'text ""
+                        'label (mingdao-error-message child)
+                        'is_primary #f
+                        'file_name "main.mingdao"))))
+
+  (jsexpr->string
+   (hasheq 'version 1
+           'message (hasheq
+                     'type "error"
+                     'code (hasheq
+                            'code (get-error-code err-type)
+                            'explanation (type->chinese err-type))
+                     'message (mingdao-error-message err)
+                     'spans (list main-span)
+                     'children (map child->json (or (mingdao-error-children err) '())))
+           'suggestion (or (mingdao-error-suggestion err) ""))))
+
+;; ============================================================
+;; 错误链 API
+;; ============================================================
+
+(define (add-child-error err child)
+  (struct-copy mingdao-error err
+               [children (cons child (or (mingdao-error-children err) '()))]))
+
+(define (make-nested-error main-error sub-errors)
+  (struct-copy mingdao-error main-error
+               [children sub-errors]))
+
+;; ============================================================
+;; 旧格式保留（向后兼容）
+;; ============================================================
+
 (define (format-exception exn [source-code #f])
   (define msg (exn-message exn))
   (cond
@@ -224,7 +445,6 @@
             (format "异常消息：~a" msg))
       "\n")]))
 
-;; Format error message for display
 (define (format-error-message err [source-code #f])
   (define err-type (mingdao-error-type err))
   (define err-msg (mingdao-error-message err))
@@ -232,7 +452,7 @@
   (define err-col (mingdao-error-col err))
   (define err-suggestion (mingdao-error-suggestion err))
   (define err-with-source (or source-code (mingdao-error-source err)))
-  
+
   (define output-lines
     (append
      (list ""
@@ -256,10 +476,9 @@
                (show-code-line err-with-source (or err-line 1) (or err-col 1)))
          '())
      (list "")))
-  
+
   (string-join output-lines "\n"))
 
-;; Error summary (one-line version)
 (define (error-summary err)
   (define err-type (mingdao-error-type err))
   (define err-msg (mingdao-error-message err))
@@ -268,41 +487,14 @@
       (format "[~a] 第~a行: ~a" (type->chinese err-type) err-line err-msg)
       (format "[~a] ~a" (type->chinese err-type) err-msg)))
 
-;; Error to Chinese message (plain text)
 (define (error->chinese-message err)
   (mingdao-error-message err))
 
-;; Error with source attached
 (define (error-with-source err source-code)
   (mingdao-error (mingdao-error-type err)
                  (mingdao-error-message err)
                  (mingdao-error-line err)
                  (mingdao-error-col err)
                  (mingdao-error-suggestion err)
-                 source-code))
-
-;; Type to Chinese name
-(define (type->chinese err-type)
-  (case err-type
-    [(语法错误) "语法错误"]
-    [(期望错误) "语法错误"]
-    [(未定义错误) "命名错误"]
-    [(参数错误) "参数错误"]
-    [(运行时错误) "运行时错误"]
-    [(类型错误) "类型错误"]
-    [(断言错误) "断言错误"]
-    [else "未知错误"]))
-
-;; Show code line with error marker
-(define (show-code-line source-code line col)
-  (define lines (string-split source-code "\n"))
-  (if (and (> (length lines) (sub1 line))
-           (> line 0))
-      (let* ([code-line (list-ref lines (sub1 line))]
-             [arrow (make-string (max 0 (sub1 col)) #\space)])
-        (string-append
-         code-line "\n"
-         arrow "^── 这里"))
-      (if (and (> (length lines) (sub1 line)) (> line 0))
-          (list-ref lines (sub1 line))
-          "")))
+                 source-code
+                 (or (mingdao-error-children err) '())))
