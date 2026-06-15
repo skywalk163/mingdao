@@ -4,7 +4,8 @@
 
 (require racket/match
          racket/list
-         racket/hash)
+         racket/hash
+         racket/string)
 
 (provide analyze
          semantic-error
@@ -13,6 +14,8 @@
          make-global-scope
          lookup-symbol
          define-symbol!
+         infer-type
+         type->string
          (struct-out semantic-error)
          (struct-out scope)
          (struct-out symbol-info))
@@ -114,7 +117,8 @@
 ;; 辅助函数：定义带检查的符号
 ;; ============================================================
 
-(define (register-with-checks! name-str name-sym kind mutable? current-scope add-error!)
+(define (register-with-checks! name-str name-sym kind mutable? current-scope add-error!
+                                [type #f])
   ;; 重复定义检查
   (when (hash-has-key? (scope-symbols current-scope) name-str)
     (add-error! (make-error 'redefined
@@ -132,7 +136,7 @@
                             "考虑重命名以提高可读性")))
   ;; 注册
   (define-symbol! name-str
-                  (symbol-info kind #f (get-line name-sym) (get-col name-sym) mutable? #t)
+                  (symbol-info kind type (get-line name-sym) (get-col name-sym) mutable? #t)
                   current-scope))
 
 ;; ============================================================
@@ -201,18 +205,34 @@
       
       ;; 变量定义: (define name value)
       [`(define ,(? symbol? name) ,val)
-       (register-with-checks! (symbol-name name) name '变量 #t current-scope add-error!)
+       (define val-type (infer-type val current-scope))
+       (register-with-checks! (symbol-name name) name '变量 #t current-scope add-error! val-type)
        (analyze-expr val current-scope)]
       
       ;; 函数定义: (define (fn . params) . body)
       [`(define (,(? symbol? fn) . ,params) . ,body)
-       (register-with-checks! (symbol-name fn) fn '函数 #f current-scope add-error!)
+       (define fn-str (symbol-name fn))
        (define child-scope (make-child-scope current-scope))
        (for ([p params])
          (when (symbol? p)
            (register-with-checks! (symbol-name p) p '参数 #t child-scope add-error!)))
+       ;; 先分析函数体
        (for ([b body])
-         (analyze-expr b child-scope))]
+         (analyze-expr b child-scope))
+       ;; 推导返回类型：从 return 语句或最后一条表达式推断
+       (define fn-return-type
+         (let loop ([b body])
+           (cond
+             [(null? b) '任意]
+             [(and (pair? (car b)) (eq? (caar b) 'return) (pair? (cdar b)))
+              (infer-type (cadar b) child-scope)]
+             [else (loop (cdr b))])))
+       (define final-type
+         (if (eq? fn-return-type '任意)
+             (and (pair? body) (infer-type (last body) child-scope))
+             fn-return-type))
+       (register-with-checks! fn-str fn '函数 #f current-scope add-error!
+                              (or final-type '任意))]
       
       ;; 赋值: (set! var val)
       [`(set! ,(? symbol? var) ,val)
@@ -310,3 +330,157 @@
   
   ;; 返回错误列表（按出现顺序）
   (reverse errors))
+
+;; ============================================================
+;; 内置函数返回类型表
+;; ============================================================
+
+(define builtin-return-types
+  (hash
+   "加" (λ (ts) (if (member '浮点数 ts) '浮点数 '整数))
+   "减" (λ (ts) (if (member '浮点数 ts) '浮点数 '整数))
+   "乘" (λ (ts) (if (member '浮点数 ts) '浮点数 '整数))
+   "除" (λ (ts) '浮点数)
+   "模" (λ (ts) (if (member '浮点数 ts) '浮点数 '整数))
+   "幂" (λ (ts) (if (member '浮点数 ts) '浮点数 '整数))
+   "大于" (λ (ts) '布尔)
+   "小于" (λ (ts) '布尔)
+   "等于" (λ (ts) '布尔)
+   "不等" (λ (ts) '布尔)
+   "大于等于" (λ (ts) '布尔)
+   "小于等于" (λ (ts) '布尔)
+   "非" (λ (ts) '布尔)
+   "与" (λ (ts) '布尔)
+   "或" (λ (ts) '布尔)
+   "转整数" (λ (ts) '整数)
+   "转浮点数" (λ (ts) '浮点数)
+   "数字转字符串" (λ (ts) '字符串)
+   "长度" (λ (ts) '整数)
+   "索引" (λ (ts) '任意)
+   "范围" (λ (ts) '(列表 整数))
+   "绝对值" (λ (ts) (if (null? ts) '任意 (car ts)))
+   "最大值" (λ (ts) (if (null? ts) '任意 (car ts)))
+   "最小值" (λ (ts) (if (null? ts) '任意 (car ts)))
+   "正弦" (λ (ts) '浮点数)
+   "余弦" (λ (ts) '浮点数)
+   "正切" (λ (ts) '浮点数)
+   "阶乘" (λ (ts) '整数)
+   "随机整数" (λ (ts) '整数)
+   "随机浮点数" (λ (ts) '浮点数)
+   "字符串长度" (λ (ts) '整数)
+   "字符串转列表" (λ (ts) '(列表 字符串))
+   "打印" (λ (ts) (if (null? ts) '任意 (car ts)))
+   "是整数" (λ (ts) '布尔)
+   "是浮点数" (λ (ts) '布尔)
+   "是字符串" (λ (ts) '布尔)
+   "是数" (λ (ts) '布尔)
+   "是空" (λ (ts) '布尔)
+   "获取类型" (λ (ts) '字符串)
+   "表示" (λ (ts) '字符串)))
+
+;; ============================================================
+;; 类型格式化
+;; ============================================================
+
+(define (type->string t)
+  (cond
+    [(eq? t '整数) "整数"]
+    [(eq? t '浮点数) "浮点数"]
+    [(eq? t '字符串) "字符串"]
+    [(eq? t '布尔) "布尔"]
+    [(eq? t '空值) "空值"]
+    [(eq? t '任意) "任意"]
+    [(eq? t '列表) "列表"]
+    [(eq? t '字典) "字典"]
+    [(eq? t '函数) "函数"]
+    [(eq? t '符号) "符号"]
+    [(pair? t)
+     (string-append (type->string (car t))
+                    "<"
+                    (string-join (map type->string (cdr t)) ", ")
+                    ">")]
+    [else (format "~a" t)]))
+
+(define (infer-binary-op op a b scope)
+  (match op
+    [(or '加 '减 '乘 '模 '幂)
+     (let ([ta (infer-type a scope)]
+           [tb (infer-type b scope)])
+       (if (or (eq? ta '浮点数) (eq? tb '浮点数)) '浮点数 '整数))]
+    ['除 '浮点数]
+    [(or '大于 '小于 '等于 '不等 '大于等于 '小于等于 'equal?)
+     '布尔]
+    [(or '非 'not)
+     '布尔]
+    [(or '与 '或)
+     '布尔]
+    [_ (let* ([op-str (symbol->string op)]
+              [handler (hash-ref builtin-return-types op-str #f)])
+         (if handler
+             (handler (map (λ (e) (infer-type e scope)) (list a b)))
+             '任意))]))
+
+;; ============================================================
+;; 类型推导主函数
+;; ============================================================
+
+(define (infer-type expr scope)
+  (match expr
+    ;; 字面量
+    [(? exact-integer?) '整数]
+    [(? number?) '浮点数]
+    [(? string?) '字符串]
+    [(? boolean?) '布尔]
+    [(? null?) '空值]
+    [(? void?) '空值]
+    
+    ;; 符号引用：查作用域链
+    [(? symbol? s)
+     (define name (symbol->string s))
+     (define found (lookup-symbol name scope))
+     (if found
+         (or (symbol-info-type (car found)) '任意)
+         '任意)]
+    
+    ;; if 表达式
+    [`(if ,_ ,then ,else)
+     (let ([tt (infer-type then scope)]
+           [te (infer-type else scope)])
+       (if (equal? tt te) tt '任意))]
+    
+    ;; 列表字面量
+    [`(列表 . ,items)
+     (if (null? items)
+         '列表
+         (let ([elem-types (map (λ (e) (infer-type e scope)) items)])
+           (if (and (pair? elem-types)
+                    (for/and ([t elem-types]) (equal? t (car elem-types))))
+               `(列表 ,(car elem-types))
+               '列表)))]
+    
+    ;; return / 赋值（右值推导）
+    [`(return ,val)
+     (infer-type val scope)]
+    [`(= ,_ ,val)
+     (infer-type val scope)]
+    [`(set! ,_ ,val)
+     (infer-type val scope)]
+    
+    ;; 二元运算 (op a b)
+    [`(,(? symbol? op) ,a ,b)
+     (infer-binary-op op a b scope)]
+    
+    ;; 函数调用 (fn args...)
+    [`(,(? symbol? fn) . ,args)
+     (define arg-types (map (λ (a) (infer-type a scope)) args))
+     (define handler (hash-ref builtin-return-types (symbol->string fn) #f))
+     (if handler
+         (handler arg-types)
+         (let* ([fn-str (symbol->string fn)]
+                [found (lookup-symbol fn-str scope)])
+           (if found
+               (or (symbol-info-type (car found)) '任意)
+               '任意)))]
+    
+    ;; 其他：无法推导
+    [_ '任意]))
