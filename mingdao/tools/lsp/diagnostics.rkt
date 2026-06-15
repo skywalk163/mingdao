@@ -2,10 +2,12 @@
 
 (require racket/hash
          racket/string
+         racket/match
          "text-sync.rkt"
          (prefix-in parser: "../../lang/parser.rkt")
          (prefix-in tokenizer: "../../lang/tokenizer.rkt")
-         (prefix-in typechecker: "../../lang/type-checker.rkt"))
+         (prefix-in typechecker: "../../lang/type-checker.rkt")
+         "../../lang/semantic.rkt")
 
 (provide make-diagnostics
          diagnostics-compute)
@@ -74,3 +76,21 @@
                                (λ (msg) (add-diagnostic 0 0 2 msg))))
     
     (reverse diagnostics)))
+
+;; ============================================================
+;; 语义分析诊断 — 将 semantic.rkt 的错误转为 LSP 诊断
+;; ============================================================
+
+(define (semantic->diagnostics semantic-errors)
+  (for/list ([err semantic-errors])
+    (hash 'range
+          (hash 'start (hash 'line (semantic-error-line err)
+                             'character (semantic-error-col err))
+                'end (hash 'line (semantic-error-line err)
+                          'character (max 1 (+ (semantic-error-col err) 1))))
+          'severity (match (semantic-error-type err)
+                      ['redefined 1]
+                      ['constant-assign 1]
+                      [_ 2])
+          'source "明道语义分析"
+          'message (semantic-error-message err))))

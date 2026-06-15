@@ -4,13 +4,25 @@
          racket/string
          racket/match
          racket/date
+         racket/list
          json
          "transport.rkt"
          "text-sync.rkt"
          "diagnostics.rkt"
-         "completion.rkt")
+         "completion.rkt"
+         "analysis.rkt"
+         "../../lang/semantic.rkt")
 
 (provide start-lsp-server)
+
+;; 内置函数名列表
+(define builtin-names
+  '("打印" "长度" "索引" "列表" "列表修改" "消息拼接" "生成" "捕获" "任意" "新建"
+    "定义类" "异步" "等待" "加" "减" "乘" "除" "模" "幂"
+    "大于" "小于" "等于" "不等" "大于等于" "小于等于" "非" "与" "或"
+    "转整数" "转浮点数" "数字转字符串" "字符串长度" "正弦" "余弦" "阶乘" "随机整数"
+    "绝对值" "最大值" "最小值" "是整数" "是浮点数" "是字符串" "是数" "是空" "获取类型"
+    "范围" "映射" "过滤" "追加" "拼接" "反转" "包含" "切片"))
 
 ;; LSP服务器状态
 (struct lsp-server-state (transport
@@ -101,6 +113,11 @@
                  ('id id)
                  ('method "textDocument/documentSymbol"))
      (handle-document-symbol state id)]
+    [(hash-table ('jsonrpc "2.0")
+                 ('id id)
+                 ('method "textDocument/references")
+                 ('params params))
+     (handle-references state id params)]
     [_
      ;; 对未知的通知（无id）直接忽略，对请求（有id）返回空
      (define id (hash-ref request 'id #f))
@@ -121,7 +138,8 @@
           'definitionProvider #t
           'documentFormattingProvider #t
           'hoverProvider #t
-          'documentSymbolProvider #t))
+          'documentSymbolProvider #t
+          'referencesProvider #t))
   (define response (hash 'capabilities capabilities))
   (transport-write (lsp-server-state-transport state)
                    (hash 'jsonrpc "2.0"
@@ -174,9 +192,12 @@
 ;; ============================================================
 
 (define (update-diagnostics state uri)
-  (define diagnostics (diagnostics-compute (lsp-server-state-diagnostics state)
-                                           (lsp-server-state-text-sync state)
-                                           uri))
+  (define text (text-sync-get-text (lsp-server-state-text-sync state) uri))
+  (define diagnostics
+    (if text
+        (let* ([result (analyze-document text builtin-names)])
+          (get-diagnostics result))
+        '()))
   (transport-write (lsp-server-state-transport state)
                    (hash 'jsonrpc "2.0"
                          'method "textDocument/publishDiagnostics"
@@ -190,14 +211,12 @@
 (define (handle-completion state id params)
   (define doc (hash-ref params 'textDocument))
   (define uri (hash-ref doc 'uri))
-  (define pos (hash-ref params 'position))
-  (define line (hash-ref pos 'line))
-  (define char (hash-ref pos 'character))
   (define text (text-sync-get-text (lsp-server-state-text-sync state) uri))
   (define completions
     (if text
-        (completion-get (lsp-server-state-completion state) uri line char text)
-        (completion-get (lsp-server-state-completion state) uri line char "")))
+        (let* ([result (analyze-document text builtin-names)])
+          (get-completions result builtin-names))
+        (hash 'isIncomplete #f 'items '())))
   (transport-write (lsp-server-state-transport state)
                    (hash 'jsonrpc "2.0"
                          'id id
@@ -216,62 +235,15 @@
   (define text (text-sync-get-text (lsp-server-state-text-sync state) uri))
   (define hover-info
     (if text
-        (compute-hover text line char)
+        (let* ([result (analyze-document text builtin-names)]
+               [word (find-symbol-at-pos line char (analysis-result-source-lines result))]
+               [scope (analysis-result-global-scope result)])
+          (get-hover-info word scope))
         #f))
   (transport-write (lsp-server-state-transport state)
                    (hash 'jsonrpc "2.0"
                          'id id
                          'result hover-info)))
-
-(define (compute-hover text line char)
-  (define lines (string-split text "\n" #:trim? #f))
-  (define current-line (list-ref lines (min line (sub1 (length lines)))))
-  (define current-word (extract-word-at-pos current-line char))
-  (when current-word
-    (hash 'contents
-          (hash 'kind "markdown"
-                'value (format "**`~a`**\n\n~a\n\n---\n明道语言关键字"
-                               current-word (get-hover-doc current-word))))))
-
-(define (extract-word-at-pos line-str char)
-  (define len (string-length line-str))
-  (when (and (>= char 0) (< char len))
-    (define start
-      (let loop ([pos char])
-        (if (or (<= pos 0)
-                (char-whitespace? (string-ref line-str (sub1 pos)))
-                (char=? (string-ref line-str (sub1 pos)) #\，)
-                (char=? (string-ref line-str (sub1 pos)) #\())
-            pos
-            (loop (sub1 pos)))))
-    (define end
-      (let loop ([pos char])
-        (if (or (>= pos len)
-                (char-whitespace? (string-ref line-str pos))
-                (char=? (string-ref line-str pos) #\，)
-                (char=? (string-ref line-str pos) #\)))
-            pos
-            (loop (add1 pos)))))
-    (when (< start end)
-      (substring line-str start end))))
-
-;; 悬停文档
-(define (get-hover-doc word)
-  (cond
-    [(member word '("定义" "常量")) "定义变量或常量\n\n`定义 变量名 就是 值`"]
-    [(member word '("如果" "那么" "否则")) 
-     "条件分支语句\n\n`如果 条件 那么：\n    ...\n否则：\n    ...`"]
-    [(member word '("对于")) "循环语句\n\n`对于 i 从 0 到 10：\n    打印, i`"]
-    [(member word '("返回")) "从函数返回值\n\n`返回 表达式`"]
-    [(member word '("函数" "就是函")) "定义匿名函数\n\n`就是函 参数1, 参数2：\n    ...`"]
-    [(member word '("打印")) "输出到控制台"]
-    [(member word '("导入")) "导入模块"]
-    [(member word '("类")) "定义类"]
-    [(member word '("接口")) "定义接口"]
-    [(member word '("列表")) "创建列表\n\n`列表 1, 2, 3`"]
-    [(member word '("字典")) "创建字典"]
-    [(member word '("赋值")) "对变量重新赋值\n\n`赋值 变量名 = 新值`"]
-    [else (format "符号: ~a" word)]))
 
 ;; ============================================================
 ;; 定义跳转 — 跳转到变量/函数的定义处
@@ -286,24 +258,24 @@
   (define text (text-sync-get-text (lsp-server-state-text-sync state) uri))
   (define location
     (if text
-        (compute-definition text uri line char)
+        (let* ([result (analyze-document text builtin-names)]
+               [word (find-symbol-at-pos line char (analysis-result-source-lines result))]
+               [scope (analysis-result-global-scope result)]
+               [found (and word (lookup-symbol word scope))])
+          (when found
+            (define info (car found))
+            (when (symbol-info-line info)
+              (hash 'uri uri
+                    'range (hash 'start (hash 'line (symbol-info-line info)
+                                              'character (symbol-info-col info))
+                                 'end (hash 'line (symbol-info-line info)
+                                            'character (+ (symbol-info-col info)
+                                                          (string-length word))))))))
         #f))
   (transport-write (lsp-server-state-transport state)
                    (hash 'jsonrpc "2.0"
                          'id id
                          'result location)))
-
-(define (compute-definition text uri line char)
-  (define lines (string-split text "\n" #:trim? #f))
-  (define current-line (list-ref lines (min line (sub1 (length lines)))))
-  (define word (extract-word-at-pos current-line char))
-  (when word
-    ;; 搜索文档中`定义 word 就`或`定义 word 就是`开头的行
-    (for/or ([ln lines] [i (in-naturals)])
-      (when (regexp-match (format "定义 ~a 就" (regexp-quote word)) ln)
-        (hash 'uri uri
-              'range (hash 'start (hash 'line i 'character 0)
-                           'end (hash 'line i 'character (string-length ln))))))))
 
 ;; ============================================================
 ;; 格式化 — 缩进格式化
@@ -375,10 +347,40 @@
 ;; ============================================================
 
 (define (handle-document-symbol state id)
+  ;; 获取第一个缓存文档的符号
   (transport-write (lsp-server-state-transport state)
                    (hash 'jsonrpc "2.0"
                          'id id
                          'result '())))
+
+;; ============================================================
+;; 查找引用 — 在 AST 中搜索所有对符号的引用
+;; ============================================================
+
+(define (handle-references state id params)
+  (define doc (hash-ref params 'textDocument))
+  (define uri (hash-ref doc 'uri))
+  (define pos (hash-ref params 'position))
+  (define line (hash-ref pos 'line))
+  (define char (hash-ref pos 'character))
+  (define text (text-sync-get-text (lsp-server-state-text-sync state) uri))
+  (define locations
+    (if text
+        (let* ([result (analyze-document text builtin-names)]
+               [word (find-symbol-at-pos line char (analysis-result-source-lines result))])
+          (if word
+              (let* ([raw-locs (find-references-in-ast word (analysis-result-ast result))])
+                (for/list ([loc raw-locs])
+                  (match-define (list l c) loc)
+                  (hash 'uri uri
+                        'range (hash 'start (hash 'line l 'character c)
+                                     'end (hash 'line l 'character (max 1 (+ c 1)))))))
+              '()))
+        '()))
+  (transport-write (lsp-server-state-transport state)
+                   (hash 'jsonrpc "2.0"
+                         'id id
+                         'result locations)))
 
 ;; ============================================================
 ;; 启动入口

@@ -3,7 +3,8 @@
 (require racket/hash
          racket/string
          racket/match
-         (prefix-in parser: "../../lang/parser.rkt"))
+         (prefix-in parser: "../../lang/parser.rkt")
+         "../../lang/semantic.rkt")
 
 (provide make-completion
          completion-get)
@@ -142,3 +143,15 @@
         'kind kind
         'documentation doc
         'insertText label))
+
+;; ============================================================
+;; 语义分析上下文补全
+;; ============================================================
+
+;; 从 semantic.rkt 的 scope 构建上下文感知补全
+(define (build-context-completions scope builtin-names)
+  (define symbols (hash-keys (scope-symbols scope)))
+  (for/list ([name symbols] #:unless (member name builtin-names string=?))
+    (hash 'label name
+          'kind 6
+          'detail "变量")))
