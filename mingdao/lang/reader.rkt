@@ -6,9 +6,29 @@
          "semantic.rkt"
          racket/port
          racket/pretty
-         racket/list)
+         racket/list
+         racket/match)
 
 (provide read read-syntax)
+
+;; ============================================================
+;; 模块处理
+;; ============================================================
+
+(define (process-modules! ast)
+  (for ([expr ast])
+    (match expr
+      [`(mingdao-import ,path)
+       (void)]  ;; 简化：模块加载由 semantic.rkt 处理
+      [`(mingdao-import ,path #:as ,(? symbol? alias))
+       (void)]
+      [`(mingdao-import ,path #:version ,(? string? version))
+       (void)]
+      [`(mingdao-import/using ,path ,symbols)
+       (void)]
+      [`(mingdao-export . ,_)
+       (void)]  ;; 导出在语义分析阶段处理
+      [_ (void)])))
 
 ;; 内置函数名列表（与 parser 中注册的保持一致）
 (define builtin-function-names
@@ -255,6 +275,8 @@
                            (raise e)))])
         (let* ([tokens (tokenize content)]
                [ast (parse tokens)]
+               ;; 处理模块声明和导入
+               [_ (process-modules! ast)]
                [semantic-errors (analyze ast builtin-function-names)])
           (unless (null? semantic-errors)
             (parameterize ([current-error-port (current-output-port)])
@@ -280,6 +302,8 @@
                          (raise e))])
         (let* ([tokens (tokenize content)]
                [ast (parse tokens)]
+               ;; 处理模块声明和导入
+               [_ (process-modules! ast)]
                [semantic-errors (analyze ast builtin-function-names)])
           (unless (null? semantic-errors)
             (displayln "=== 语义分析警告 ===" (current-error-port))

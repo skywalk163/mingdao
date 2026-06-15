@@ -18,6 +18,9 @@
 (define type-name-list
   '("整数" "浮点数" "字符串" "布尔" "空值" "任意" "列表" "字典"))
 
+;; 模块系统关键字
+(define 模块关键字 '("公开" "私有" "模块" "作为" "使用" "版本" "导出"))
+
 (define (type-name? str)
   (member str type-name-list))
 
@@ -609,6 +612,17 @@
              (loop))))
        (expect 'RPAREN)
        `(外部函数 ,func-name ,lib-path ,return-type (,@(reverse params)))]
+      [(and (match? 'KEYWORD "定义")
+            (let ([next-tok (peek 1)])
+              (and next-tok (eq? (token-type next-tok) 'KEYWORD)
+                   (member (token-value next-tok) '("公开" "私有")))))
+       (advance)
+       (define visibility (string->symbol (token-value (current))))
+       (advance)
+       (define name (string->symbol (token-value (expect-identifier))))
+       (expect 'KEYWORD "就是")
+       (define value (parse-comma-exprs))
+       `(mingdao-def ,visibility ,name ,value)]
       [(match? 'KEYWORD "定义")
        (parse-definition)]
       [(match? 'KEYWORD "常量")
@@ -661,6 +675,10 @@
        (expect 'KEYWORD "为")
        (define value (parse-comma-exprs))
        `(set! ,var-name ,value)]
+      [(match? 'KEYWORD "模块")
+       (advance)
+       (define name (string->symbol (token-value (expect-identifier))))
+       `(mingdao-module ,(symbol->string name))]
       [(match? 'KEYWORD "导入")
        (parse-import)]
       [(match? 'KEYWORD "导出")
@@ -1496,8 +1514,27 @@
   ;; 解析导入语句
   (define (parse-import)
     (expect 'KEYWORD "导入")
+    (define first-token (current))
     (define path-str (token-value (expect 'STRING)))
-    `(导入 ,path-str))
+    (cond
+      [(match? 'KEYWORD "作为")
+       (advance)
+       (define alias (string->symbol (token-value (expect-identifier))))
+       `(mingdao-import ,path-str #:as ',alias)]
+      [(match? 'KEYWORD "使用")
+       (advance)
+       (define names '())
+       (let loop ()
+         (when (and (current) (match? 'IDENTIFIER))
+           (set! names (cons (string->symbol (token-value (advance))) names))
+           (loop)))
+       `(mingdao-import/using ,path-str ,(reverse names))]
+      [(match? 'KEYWORD "版本")
+       (advance)
+       (define version-str (token-value (expect 'STRING)))
+       `(mingdao-import ,path-str #:version ,version-str)]
+      [else
+       `(mingdao-import ,path-str)]))
   
   ;; 解析导出语句
   (define (parse-export)
@@ -1507,7 +1544,7 @@
       (when (and (current) (match? 'IDENTIFIER))
         (set! names (cons (string->symbol (token-value (advance))) names))
         (loop)))
-    `(mingdao-export ,@names))
+    `(mingdao-export ,@(map (lambda (n) (list 'quote n)) (reverse names))))
   
   ;; 解析表达式（运算符优先级）
   (define (parse-expression)

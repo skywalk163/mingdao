@@ -21,6 +21,15 @@
          (struct-out symbol-info))
 
 ;; ============================================================
+;; 当前模块上下文
+;; ============================================================
+
+(define current-module-name (make-parameter #f))
+
+(define (current-module)
+  (current-module-name))
+
+;; ============================================================
 ;; 数据结构定义
 ;; ============================================================
 
@@ -34,7 +43,9 @@
                      line     ; 定义行号
                      col      ; 定义列号
                      mutable? ; 是否可变（#t=变量 #f=常量）
-                     defined?) ; 是否已定义
+                     defined? ; 是否已定义
+                     public?  ; 是否公开（#t=公开 #f=私有）
+                     module)  ; 所属模块
   #:transparent)
 
 (struct semantic-error (type      ; 'undefined-var | 'redefined | 'shadowed | 'constant-assign | 'unused
@@ -51,15 +62,18 @@
 (define (make-global-scope builtin-names)
   (define gs (scope #f (make-hash) null))
   (for ([name builtin-names])
-    (define-symbol! name (symbol-info '内置函数 #f 0 0 #f #t) gs))
+    (define-symbol! name (symbol-info '内置函数 #f 0 0 #f #t #t #f) gs))
   gs)
 
-(define (lookup-symbol name current-scope)
+(define (lookup-symbol name current-scope [add-error! #f])
   (let loop ([s current-scope])
     (cond
       [(not s) #f]
       [(hash-has-key? (scope-symbols s) name)
-       (cons (hash-ref (scope-symbols s) name) s)]
+       (define info (hash-ref (scope-symbols s) name))
+       (when add-error!
+         (check-accessibility name info s add-error!))
+       (cons info s)]
       [else (loop (scope-parent s))])))
 
 (define (define-symbol! name info sc)
@@ -118,7 +132,7 @@
 ;; ============================================================
 
 (define (register-with-checks! name-str name-sym kind mutable? current-scope add-error!
-                                [type #f])
+                                [type #f] #:public? [public? #t])
   ;; 重复定义检查
   (when (hash-has-key? (scope-symbols current-scope) name-str)
     (add-error! (make-error 'redefined
@@ -136,7 +150,7 @@
                             "考虑重命名以提高可读性")))
   ;; 注册
   (define-symbol! name-str
-                  (symbol-info kind type (get-line name-sym) (get-col name-sym) mutable? #t)
+                  (symbol-info kind type (get-line name-sym) (get-col name-sym) mutable? #t public? (current-module))
                   current-scope))
 
 ;; ============================================================
@@ -484,3 +498,17 @@
     
     ;; 其他：无法推导
     [_ '任意]))
+
+;; ============================================================
+;; 可见性检查
+;; ============================================================
+
+(define (check-accessibility name-str info current-scope add-error!)
+  (unless (or (not info)
+              (symbol-info-public? info)
+              (equal? (symbol-info-module info) (current-module)))
+    (add-error! (semantic-error
+                  'access-denied
+                  (format "符号 '~a' 是私有的，无法在此处访问" name-str)
+                  0 0
+                  "请将符号改为公开，或在同一模块内访问"))))

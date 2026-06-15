@@ -1,42 +1,56 @@
 #lang racket/base
 
-(require racket/string
-         racket/port
-         racket/file
-         "../lang/tokenizer.rkt"
-         "../lang/parser.rkt")
+;; 明道语言模块系统测试
 
-;; 测试导入/导出语句的解析
+(require rackunit
+         "../lang/module.rkt")
 
-(define test-code "
-导入 \"test-module-utils.md\"
-打印 say-hello deck
-导出 say-hello deck
-")
+(displayln "========== 开始运行模块系统测试 ==========")
 
-(define tokens (tokenize test-code))
-(define ast (parse tokens))
+;; 测试 1：循环依赖检测
+(display "  - 循环依赖检测: ")
+(let ()
+  (define modules (hash 'a '(b) 'b '(c) 'c '(a)))
+  (define cycles (detect-circular-deps modules))
+  (check-true (not (null? cycles)) "应检测到循环依赖")
+  (displayln "✓"))
 
-(printf "解析结果 (~a 个表达式):~n" (length ast))
-(for ([expr ast])
-  (printf "  ~s~n" expr))
+;; 测试 2：无循环依赖
+(display "  - 无循环依赖: ")
+(let ()
+  (define modules (hash 'a '(b) 'b '(c)))
+  (define cycles (detect-circular-deps modules))
+  (check-true (null? cycles) "不应检测到循环依赖")
+  (displayln "✓"))
 
-;; 验证解析结果
-(printf "~n验证导入语句...~n")
-(define import-expr (findf (λ (e) (and (list? e) (eq? (car e) 'mingdao-import))) ast))
-(when import-expr
-  (printf "  [OK] 导入语句: 文件 = ~a~n" (cadr import-expr)))
+;; 测试 3：resolve-package 相对路径
+(display "  - 相对路径解析: ")
+(let ()
+  (define path (resolve-package "./test.mingdao" #f))
+  (check-equal? path "./test.mingdao")
+  (displayln "✓"))
 
-(printf "~n验证导出语句...~n")
-(define export-expr (findf (λ (e) (and (list? e) (eq? (car e) 'mingdao-export))) ast))
-(when export-expr
-  (printf "  [OK] 导出语句: 符号 = ~a~n" (cdr export-expr)))
+;; 测试 4：resolve-package 绝对路径
+(display "  - 绝对路径解析: ")
+(let ()
+  (define path (resolve-package "/absolute/path.mingdao" #f))
+  (check-equal? path "/absolute/path.mingdao")
+  (displayln "✓"))
 
-(printf "~n验证普通表达式...~n")
-(define normal-exprs (filter (λ (e) 
-  (not (or (and (list? e) (memq (car e) '(mingdao-import mingdao-export)))
-           (eq? e '(void))))) ast))
-(for ([expr normal-exprs])
-  (printf "  [OK] 普通表达式: ~s~n" expr))
+;; 测试 5：extract-exports 函数
+(display "  - 导出列表提取: ")
+(let ()
+  (define ast '((mingdao-export PI 双倍) (define x 5)))
+  (define exports (extract-exports ast))
+  (check-equal? (length exports) 2 "应提取2个导出")
+  (displayln "✓"))
 
-(printf "~n=== 模块系统测试通过 ===~n")
+;; 测试 6：extract-dependencies 函数
+(display "  - 依赖列表提取: ")
+(let ()
+  (define ast '((mingdao-import "./utils") (mingdao-import "./math" #:as m) (define x 5)))
+  (define deps (extract-dependencies ast))
+  (check-equal? (length deps) 2 "应提取2个依赖")
+  (displayln "✓"))
+
+(displayln "========== 测试完成 ==========")
