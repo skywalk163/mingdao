@@ -138,6 +138,10 @@
   (if m
       (let* ([op-str (or (list-ref m 1) "=")]
              [version-str (list-ref m 2)]
+             ;; 规范化简写版本 "2.0" -> "2.0.0"
+             [normalized-ver (if (regexp-match? #rx"^[0-9]+\\.[0-9]+$" version-str)
+                                 (string-append version-str ".0")
+                                 version-str)]
              [op (case op-str
                    [("^") 'caret]
                    [("~") 'tilde]
@@ -147,7 +151,7 @@
                    [("<") 'lt]
                    [("=") 'exact]
                    [else (error 'parse-constraint "未知的操作符: ~a" op-str)])]
-             [ver (parse-version version-str)])
+             [ver (parse-version normalized-ver)])
         (version-constraint op ver))
       (error 'parse-constraint "无效的约束字符串: ~a" str)))
 

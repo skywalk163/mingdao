@@ -343,7 +343,9 @@
                  "解析如果" "解析对于" "解析遍历"
                  "解析返回" "解析赋值" "解析满足循环" "解析程序" "解析" "匹配"
                  ;; 异常类型名（用于 尝试/捕获）
-                 "任意错误" "类型错误" "参数错误" "变量错误" "文件错误" "读取错误" "语法错误" "用户错误" "网络错误" "除零错误")])
+                 "任意错误" "类型错误" "参数错误" "变量错误" "文件错误" "读取错误" "语法错误" "用户错误" "网络错误" "除零错误"
+                 ;; 声明关键字（用于参数名）
+                 "类型" "就是")])
     (hash-set! function-names name #t))
   (when extra-function-names
     (for ([name extra-function-names])
@@ -1931,6 +1933,7 @@
       [(match? 'IDENTIFIER)
        (define name-str (token-value (advance)))
        (if (function-name? name-str)
+           ;; 检查下一个 token 是否是参数分隔符（括号）
            (if (match? 'LPAREN)
                ;; 函数名后跟括号：函数名(参数1,参数2)
                (let ([func-name (string->symbol name-str)]
@@ -1945,8 +1948,8 @@
                        (loop))))
                  (expect 'RPAREN)
                  `(,func-name ,@(reverse args)))
-               ;; 无参数函数引用
-               (list (string->symbol name-str)))
+               ;; 无参数，返回函数名作为标识符
+               (string->symbol name-str))
            (string->symbol name-str))]
       [(match? 'OPERATOR)
        (string->symbol (token-value (advance)))]

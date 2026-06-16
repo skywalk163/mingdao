@@ -4,6 +4,7 @@
          "parser.rkt"
          "error.rkt"
          "semantic.rkt"
+         "ir.rkt"
          racket/port
          racket/pretty
          racket/list
@@ -263,6 +264,13 @@
     "解析返回" "解析赋值" "解析满足循环" "解析程序" "解析" "匹配"
     "任意错误" "类型错误" "参数错误" "变量错误" "文件错误" "读取错误" "语法错误" "用户错误" "网络错误" "除零错误"))
 
+;; 通过 IR 优化管道处理 AST，失败则回退到原始 AST
+(define (optimize-through-ir ast builtin-names)
+  (with-handlers ([exn:fail? (λ (e) ast)])
+    (if (use-ir-optimization?)
+        (module->racket ast builtin-names)
+        ast)))
+
 (define (read in)
   (define content (port->string in))
   (if (string=? content "")
@@ -280,16 +288,17 @@
                [semantic-errors (analyze ast builtin-function-names)])
           (unless (null? semantic-errors)
             (parameterize ([current-error-port (current-output-port)])
-              (displayln "=== 语义分析警告 ===")
               (for ([err (take semantic-errors (min (length semantic-errors) 10))])
                 (displayln (format "  [~a] ~a"
                                     (semantic-error-type err)
                                     (semantic-error-message err))))
               (when (> (length semantic-errors) 10)
                 (displayln (format "  ... 还有 ~a 个警告" (- (length semantic-errors) 10))))))
+          ;; 通过 IR 优化管道
+          (define optimized-ast (optimize-through-ir ast builtin-function-names))
           `(module 明道 racket/base
              (require (lib "core.rkt" "mingdao"))
-             ,@ast)))))
+             ,@optimized-ast)))))
 
 (define (read-syntax src in)
   (define content (port->string in))
@@ -315,10 +324,12 @@
             (when (> (length semantic-errors) 10)
               (displayln (format "  ... 还有 ~a 个警告" (- (length semantic-errors) 10))
                          (current-error-port))))
+          ;; 通过 IR 优化管道
+          (define optimized-ast (optimize-through-ir ast builtin-function-names))
           (datum->syntax #f
             `(module ,(string->symbol
                         (string-append "明道-"
                           (path->string src)))
                racket/base
                (require (lib "core.rkt" "mingdao"))
-               ,@ast))))))
+               ,@optimized-ast))))))

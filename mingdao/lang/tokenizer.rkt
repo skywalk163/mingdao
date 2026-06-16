@@ -37,13 +37,13 @@
 ;; 控制流关键字（用于语句控制）
 (define 控制流关键字
   '("定义" "常量" "如果" "那么" "否则" "对于" "跳出" "继续" "返回"
-    "导入" "导出" "模块" "赋值" "尝试" "捕获" "匹配" "始终"
-    "或" "开始" "结束" "产出" "接口" "实现" "方法" "类" "自己" "属性" "异步" "等待" "未来"
+    "导入" "导出" "模块" "赋值" "捕获" "始终"
+    "或" "开始" "产出" "接口" "实现" "方法" "类" "自己" "属性" "异步" "等待" "未来"
     "引用" "执行"))
 
 ;; 声明关键字（双字）
 (define 声明关键字
-  '("就是" "类型"))
+  '("就是"))
 
 ;; 循环关键字
 (define 循环关键字
@@ -75,7 +75,7 @@
 
 ;; 单字关键字
 (define 单字关键字
-  '("从" "到" "为" "类"))
+  '("从" "到" "为"))
 
 ;; ============================================================
 ;; 派生关键字列表（用于分词器匹配）
@@ -372,7 +372,8 @@
              [next2 (peek 2)]
              [next3 (peek 3)])
          (or
-           ;; 单字关键字/运算符（"从""到""为""加""减"等）
+           ;; 单字关键字/运算符（"从""到""为""加""减"等）—— 必须优先检查
+           ;; 因为 peek(1) 会返回下一个字符，可能干扰后续的双字/三字/四字检查
            (member (string first-ch) (append 单字关键字 单字运算符))
            ;; 四字关键字
            (and next1 next2 next3
@@ -380,16 +381,11 @@
            ;; 三字关键字
            (and next1 next2
                 (member (string first-ch next1 next2) 三字关键字))
-           ;; 双字关键字（仅读boundary-keywords，不包含主循环处理的控制流关键字）
+           ;; 双字关键字（仅检查标识符读边界关键字）
            (and next1
                 (member (string first-ch next1) 标识符读边界关键字))))))
 
 (define (read-identifier first-char)
-    ;; 读取标识符（可能包含多个中文字符）
-    ;; 贪心读取所有连续的中文字符和字母数字字符
-    ;; 单字运算符（加、减、乘、除等）在标识符中间时作为标识符一部分继续读入，
-    ;; 避免复合函数名（如"追加多个""取前几个"等）被错误拆分。
-    ;; 主循环已经处理了关键字/运算符的边界检测。
     (define start-line line)
     (define start-col (sub1 col))
     (define chars (list first-char))
@@ -397,23 +393,23 @@
     (let loop ()
       (let ([ch (peek)])
         (cond
-          ;; 单字运算符和单字关键字（加、减、乘、除、非、与、或、从、到、为等）作为标识符一部分继续读入
-          ;; 因为read-identifier只在首字符不是运算符/关键字时被调用，
-          ;; 后续遇到的运算符/关键字字符属于复合函数名的一部分
-          [(and ch (chinese-char? ch) (or (member (string ch) 单字运算符)
-                                  (member (string ch) 单字关键字)))
+          ;; 单字运算符（中文）→ 继续读入
+          [(and ch (chinese-char? ch) (member (string ch) 单字运算符))
            (set! chars (cons ch chars))
            (advance)
            (loop)]
-          ;; 普通中文字符，继续读入（先于边界关键字检查，避免单字运算符如"为"被误判为边界）
+          ;; 普通中文字符且不是边界关键字 → 继续读入
           [(and ch (chinese-char? ch) (not (boundary-keyword? ch)))
            (set! chars (cons ch chars))
            (advance)
            (loop)]
-          ;; boundary-keywords（如"就是""从""到"）→ 停止，留给主循环处理
+          ;; 边界关键字（中文）→ 停止
           [(and ch (chinese-char? ch) (boundary-keyword? ch))
            (token 'IDENTIFIER (list->string (reverse chars)) start-line start-col)]
-          ;; 英文/数字/下划线/连字符/斜杠
+          ;; 英文/数字之前，先检查是否是中文边界关键字
+          [(and ch (chinese-char? ch))
+           (token 'IDENTIFIER (list->string (reverse chars)) start-line start-col)]
+          ;; 英文/数字/下划线/连字符/斜杠 → 继续读入
           [(and ch (or (char-alphabetic? ch) (char-numeric? ch) (char=? ch #\_) (char=? ch #\-) (char=? ch #\/)))
            (set! chars (cons ch chars))
            (advance)
@@ -553,20 +549,23 @@
              ;; boundary-keywords（控制流、声明、比较、管道、运算符等）无条件拆分
              ;; 非边界双字关键字（索引、长度、列表等）检查第三个字符是否中文且不能构成关键字，若是则合并为标识符
              [(member potential-two-char 双字关键字)
-              (if (member potential-two-char boundary-keywords)
+              (if (member potential-two-char 标识符读边界关键字)
                   ;; 边界关键字：无条件拆分
                   (begin
                     (advance)
                     (set! tokens (cons (token 'KEYWORD potential-two-char line (- col 1)) tokens)))
                   ;; 非边界双字关键字（索引、长度、列表等）：检查是否需要合并
                   (let ([third-char (peek 1)])
-                    (if (and third-char (chinese-char? third-char)
+                    (if (and third-char
+                             (not (member potential-two-char 强制拆分关键字))
+                             (chinese-char? third-char)
                              (not (can-form-keyword? third-char 1)))
                         (set! tokens (cons (read-identifier ch) tokens))
+                        ;; 如果 potential-two-char 是关键字，识别为 KEYWORD
                         (begin
                           (advance)
                           (set! tokens (cons (token 'KEYWORD potential-two-char line (- col 1)) tokens))))))]
-             
+
              ;; 单字关键字（边界由read-identifier处理）
              [(member (string ch) 单字关键字)
               (set! tokens (cons (token 'KEYWORD (string ch) line col) tokens))]
@@ -666,14 +665,16 @@
            (let ident-loop ()
              (let ([next (peek)])
                (cond
-                 ;; 单字运算符和单字关键字（加、减、从、到、为等）作为标识符一部分继续读入
+                 ;; 单字运算符（加、减等）作为标识符一部分继续读入
                  ;; 允许复合函数名（如"追加多个"）包含运算符
-                 [(and next (chinese-char? next) (or (member (string next) 单字运算符)
-                                              (member (string next) 单字关键字)))
+                 [(and next (chinese-char? next) (member (string next) 单字运算符))
                   (set! chars (cons next chars))
                   (advance)
                   (ident-loop)]
-                 ;; boundary-keywords（单字/多字关键字）→ 停止，留给主循环处理
+                 ;; 单字关键字（从、到、为等）→ 停止，留给主循环处理
+                 [(and next (chinese-char? next) (member (string next) 单字关键字))
+                  (void)]
+                 ;; boundary-keywords（多字关键字）→ 停止，留给主循环处理
                  [(and next (chinese-char? next) (boundary-keyword? next))
                   (void)]
                  ;; 普通中文字符，继续读入

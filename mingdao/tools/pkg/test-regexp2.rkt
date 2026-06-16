@@ -1,0 +1,11 @@
+#lang racket/base
+(require racket/string)
+(define re #rx"^([0-9]+)\\.([0-9]+)\\.([0-9]+)(?:-([a-zA-Z0-9.-]+))?(?:\\+([a-zA-Z0-9.-]+))?$")
+(define m (regexp-match re "1.2.3"))
+(displayln m)
+(define m2 (regexp-match re "1.2.3-alpha"))
+(displayln m2)
+(define m3 (regexp-match re "1.2.3+build.123"))
+(displayln m3)
+(define m4 (regexp-match re "1.2.3-alpha+build.123"))
+(displayln m4)

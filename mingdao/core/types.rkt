@@ -21,7 +21,13 @@
          ;; 命名结构体机制
          *结构体表* 定义结构体 结构 新建结构 字段
          ;; 运行时类型校验
-         检查类型 校验类型 *运行时类型别名表*)
+         检查类型 校验类型 *运行时类型别名表*
+         ;; 严格模式运行时类型校验
+         *strict-runtime-mode*
+         enable-strict-runtime!
+         disable-strict-runtime!
+         断言类型 运行时类型检查
+         安全转整数 安全转浮点数)
 
 ;; ==================== Python风格类型与转换 ====================
 
@@ -253,4 +259,58 @@
                    type-expr
                    value
                    (获取类型 value))))
+  value)
+
+;; ==================== 严格模式运行时类型校验 ====================
+
+;; 严格模式开关
+(define *strict-runtime-mode* #t)
+
+(define (enable-strict-runtime!)
+  (set! *strict-runtime-mode* #t))
+
+(define (disable-strict-runtime!)
+  (set! *strict-runtime-mode* #f))
+
+;; 获取值的类型名称（严格模式版本）
+(define (严格-获取类型 value)
+  (cond
+    [(exact-integer? value) '整数]
+    [(flonum? value) '浮点数]
+    [(string? value) '字符串]
+    [(boolean? value) '布尔]
+    [(null? value) '空值]
+    [else '任意]))
+
+;; 检查值是否符合预期类型（严格模式版本）
+(define (严格-检查类型值 value expected-type)
+  (let ([actual-type (严格-获取类型 value)])
+    (cond
+      [(eq? expected-type '任意) #t]
+      [(eq? actual-type expected-type) #t]
+      [(and (eq? expected-type '浮点数) (eq? actual-type '整数)) #t]
+      [else #f])))
+
+;; 断言类型函数
+(define (断言类型 value expected-type)
+  (when *strict-runtime-mode*
+    (unless (严格-检查类型值 value expected-type)
+      (error '断言类型
+             (format "运行时类型校验失败: 期望类型 ~a，但得到 ~a (值: ~a)"
+                     expected-type
+                     (严格-获取类型 value)
+                     value))))
+  value)
+
+;; 运行时类型检查
+(define (运行时类型检查 value type-expr)
+  (断言类型 value type-expr))
+
+;; 安全类型转换
+(define (安全转整数 value)
+  (断言类型 value '整数)
+  value)
+
+(define (安全转浮点数 value)
+  (断言类型 value '浮点数)
   value)
