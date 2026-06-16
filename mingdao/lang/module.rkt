@@ -160,7 +160,11 @@
     (match expr
       [`(mingdao-export ,names ...)
        (set! exports (append (map (lambda (n)
-                                     (if (symbol? n) n (string->symbol n)))
+                                     (cond
+                                       [(symbol? n) n]
+                                       [(and (pair? n) (eq? (car n) 'quote))
+                                        (cadr n)]
+                                       [else (string->symbol (format "~a" n))]))
                                    names)
                               exports))]
       [_ (void)]))

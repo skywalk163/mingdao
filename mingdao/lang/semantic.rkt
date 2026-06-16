@@ -101,6 +101,9 @@
         "unquote-splicing" "cond" "case" "do" "and" "or"
         "when" "unless" "for" "for-each" "in-range" "async"
         "async/await" "thread" "semaphore" "mutex" "channel"
+        ">" "<" ">=" "<=" "=" "not" "+" "-" "*" "/"
+        "list" "void" "cons" "car" "cdr" "null?"
+        "mingdao-import" "mingdao-export"
         "异步" "等待"))
 
 ;; ============================================================
