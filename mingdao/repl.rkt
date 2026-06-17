@@ -8,7 +8,19 @@
          racket/string
          racket/port
          racket/file
-         racket/pretty)
+         racket/pretty
+         racket/format
+         racket/hash)
+
+;; === AI 支持 ===
+;; 动态加载 AI 适配器（加载失败时这些函数为 #f，REPL 不会崩溃）
+(define (try-require-file filename sym)
+  (with-handlers ([exn:fail? (lambda (e) #f)])
+    (dynamic-require (string-append (path->string (current-directory)) "mingdao/tools/ai/" filename) sym)))
+
+(define ai生成代码-fn (try-require-file "adapter.rkt" 'ai生成代码))
+(define ai验证代码-fn (try-require-file "adapter.rkt" 'ai验证代码))
+(define ai获取提供者列表-fn (try-require-file "adapter.rkt" 'ai获取提供者列表))
 
 ;; 创建独立的命名空间，通过 eval 加载主模块（含 导入 函数）
 (define ns
@@ -146,6 +158,12 @@
   (displayln "║ 断点            设置执行断点")
   (displayln "║ 记录            结构化日志")
   (displayln "╚══════════════════════╝")
+  (newline)
+  (displayln "╔══ AI 命令 ══╗")
+  (displayln "║ /ai <需求>        AI 生成代码")
+  (displayln "║ /providers        查看 AI 提供商")
+  (displayln "║ /help-ai          AI 帮助")
+  (displayln "╚══════════════════════╝")
   (newline))
 
 ;; 调试命令处理
@@ -166,7 +184,72 @@
      #t]
     [(string=? trimmed "")
      #t]
+    [(string-prefix? trimmed "/ai")
+     (handle-ai-command trimmed)
+     #t]
+    [(string-prefix? trimmed "/providers")
+     (when ai获取提供者列表-fn
+       (printf "可用 AI 提供商: ~a\n" (string-join (map ~a (ai获取提供者列表-fn)) ", ")))
+     (when (not ai获取提供者列表-fn)
+       (displayln "AI 模块未加载（未找到 adapter.rkt）"))
+     #t]
+    [(string-prefix? trimmed "/help-ai")
+     (print-ai-help)
+     #t]
     [else #f]))
+
+;; AI 命令处理
+(define (handle-ai-command line)
+  (define trimmed (string-trim line))
+  (cond
+    [(string=? trimmed "/ai")
+     ;; 交互式生成
+     (display "请用中文描述你的需求: ")
+     (flush-output)
+     (define demand (read-line))
+     (when (and (not (eof-object? demand))
+                (not (string=? (string-trim demand) "")))
+       (printf "\n正在生成代码...\n\n")
+       (if ai生成代码-fn
+           (begin
+             (define code (ai生成代码-fn demand))
+             (printf "=== 生成的代码 ===\n")
+             (displayln code)
+             (newline)
+             ;; 询问是否验证
+             (display "是否验证代码? (y/n): ")
+             (flush-output)
+             (define ans (read-line))
+             (when (and (not (eof-object? ans))
+                        (or (string-ci=? (string-trim ans) "y")
+                            (string-ci=? (string-trim ans) "是")))
+               (define vr (ai验证代码-fn code))
+               (printf "验证结果: ~a\n" (hash-ref vr '状态 "未知"))
+               (when (not (empty? (hash-ref vr '错误 '())))
+                 (printf "发现的问题:\n")
+                 (for-each (lambda (e) (printf "  - ~a\n" e)) (hash-ref vr '错误 '())))))
+           (displayln "AI 模块未加载（未找到 adapter.rkt）")))]
+    [(> (string-length trimmed) 4)
+     ;; /ai <需求> 直接生成
+     (define demand (string-trim (substring trimmed 4)))
+     (unless (string=? demand "")
+       (printf "正在生成代码...\n\n")
+       (if ai生成代码-fn
+           (begin
+             (define code (ai生成代码-fn demand))
+             (printf "=== 生成的代码 ===\n")
+             (displayln code))
+           (displayln "AI 模块未加载（未找到 adapter.rkt）")))]))
+
+;; AI 帮助信息
+(define (print-ai-help)
+  (displayln "╔══ AI 命令 ══╗")
+  (displayln "║ /ai <需求>      用中文描述生成明道代码")
+  (displayln "║ /ai             交互式生成代码")
+  (displayln "║ /providers      列出可用的 AI 提供商")
+  (displayln "║ /help-ai        显示 AI 帮助")
+  (displayln "╚══════════════════════╝")
+  (newline))
 
 ;; REPL 主循环
 (define (repl-loop)
